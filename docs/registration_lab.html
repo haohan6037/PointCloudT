@@ -167,7 +167,7 @@
       <article class="viewer">
         <h2>Council Aerial</h2>
         <div class="canvas-wrap" id="councilWrap">
-          <img id="councilImage" src="../.codex-artifacts/council-context/127-captain-springs-road-te-papapa-auckland-1061.png" alt="council aerial">
+          <img id="councilImage" src="../.codex-artifacts/council-context/16-pounamu-place-shelly-park-auckland-2014.png" alt="council aerial">
           <canvas id="councilCanvas"></canvas>
         </div>
       </article>
@@ -176,7 +176,7 @@
 
   <script>
     const pcMetaUrl = "../.codex-artifacts/topview/stage1_bundle/topview_metadata.json";
-    const councilMetaUrl = "../.codex-artifacts/council-context/127-captain-springs-road-te-papapa-auckland-1061.json";
+    const councilMetaUrl = "../.codex-artifacts/council-context/16-pounamu-place-shelly-park-auckland-2014.json";
 
     const statusText = document.getElementById("statusText");
     const pairCount = document.getElementById("pairCount");
@@ -196,6 +196,7 @@
     let councilMeta = null;
     const pairs = [];
     let pendingPc = null;
+    let councilMaskRingsImage = [];
 
     function fitCanvasToImage(img, canvas) {
       canvas.width = img.clientWidth;
@@ -215,9 +216,95 @@
       ctx.fillText(String(label), x + 8, y - 8);
     }
 
+    function councilWorldToImage(x, y) {
+      const bbox = councilMeta.bbox_2193;
+      const imageW = councilImage.naturalWidth || 1200;
+      const imageH = councilImage.naturalHeight || 1200;
+      const px = ((x - bbox.xmin) / Math.max(bbox.xmax - bbox.xmin, 1e-9)) * (imageW - 1);
+      const py = ((bbox.ymax - y) / Math.max(bbox.ymax - bbox.ymin, 1e-9)) * (imageH - 1);
+      return { x: px, y: py };
+    }
+
+    function imageToViewPt(xImage, yImage, img, canvas) {
+      return {
+        x: (xImage / Math.max(img.naturalWidth, 1)) * canvas.width,
+        y: (yImage / Math.max(img.naturalHeight, 1)) * canvas.height
+      };
+    }
+
+    function buildCouncilMaskGeometry() {
+      const geom = councilMeta.property_geometry;
+      const rings = (geom && geom.rings) ? geom.rings : [];
+      councilMaskRingsImage = rings.map((ring) =>
+        ring.map((xy) => councilWorldToImage(xy[0], xy[1]))
+      );
+    }
+
+    function drawCouncilParcelMask() {
+      if (!councilMaskRingsImage.length) return;
+
+      councilCtx.save();
+      councilCtx.fillStyle = "rgba(25, 25, 25, 0.48)";
+      councilCtx.fillRect(0, 0, councilCanvas.width, councilCanvas.height);
+
+      councilCtx.globalCompositeOperation = "destination-out";
+      councilCtx.beginPath();
+      for (const ring of councilMaskRingsImage) {
+        if (!ring.length) continue;
+        const start = imageToViewPt(ring[0].x, ring[0].y, councilImage, councilCanvas);
+        councilCtx.moveTo(start.x, start.y);
+        for (let i = 1; i < ring.length; i += 1) {
+          const pt = imageToViewPt(ring[i].x, ring[i].y, councilImage, councilCanvas);
+          councilCtx.lineTo(pt.x, pt.y);
+        }
+        councilCtx.closePath();
+      }
+      councilCtx.fill("evenodd");
+
+      councilCtx.globalCompositeOperation = "source-over";
+      councilCtx.beginPath();
+      for (const ring of councilMaskRingsImage) {
+        if (!ring.length) continue;
+        const start = imageToViewPt(ring[0].x, ring[0].y, councilImage, councilCanvas);
+        councilCtx.moveTo(start.x, start.y);
+        for (let i = 1; i < ring.length; i += 1) {
+          const pt = imageToViewPt(ring[i].x, ring[i].y, councilImage, councilCanvas);
+          councilCtx.lineTo(pt.x, pt.y);
+        }
+        councilCtx.closePath();
+      }
+      councilCtx.lineWidth = 2;
+      councilCtx.strokeStyle = "rgba(31, 143, 90, 0.95)";
+      councilCtx.stroke();
+      councilCtx.restore();
+    }
+
+    function pointInRing(x, y, ring) {
+      let inside = false;
+      for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+        const xi = ring[i].x;
+        const yi = ring[i].y;
+        const xj = ring[j].x;
+        const yj = ring[j].y;
+        const hit = ((yi > y) !== (yj > y)) &&
+          (x < ((xj - xi) * (y - yi)) / Math.max(yj - yi, 1e-9) + xi);
+        if (hit) inside = !inside;
+      }
+      return inside;
+    }
+
+    function isInsideCouncilParcel(xImage, yImage) {
+      if (!councilMaskRingsImage.length) return true;
+      for (const ring of councilMaskRingsImage) {
+        if (pointInRing(xImage, yImage, ring)) return true;
+      }
+      return false;
+    }
+
     function redraw() {
       pcCtx.clearRect(0, 0, pcCanvas.width, pcCanvas.height);
       councilCtx.clearRect(0, 0, councilCanvas.width, councilCanvas.height);
+      drawCouncilParcelMask();
       pairs.forEach((pair, idx) => {
         drawPoint(pcCtx, pair.pcPixel.xView, pair.pcPixel.yView, idx + 1, "#1f8f5a");
         drawPoint(councilCtx, pair.councilPixel.xView, pair.councilPixel.yView, idx + 1, "#c44e29");
@@ -312,6 +399,10 @@
           return;
         }
         const p = getImagePixel(evt, councilImage);
+        if (!isInsideCouncilParcel(p.xImage, p.yImage)) {
+          statusText.textContent = "Outside this property boundary. Pick a point inside the highlighted parcel.";
+          return;
+        }
         const pair = {
           pcPixel: pendingPc,
           councilPixel: {
@@ -356,6 +447,7 @@
     ]).then(([pc, council]) => {
       pcMeta = pc;
       councilMeta = council;
+      buildCouncilMaskGeometry();
       fitCanvasToImage(pcImage, pcCanvas);
       fitCanvasToImage(councilImage, councilCanvas);
       wireHandlers();
