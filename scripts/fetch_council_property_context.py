@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import re
 from pathlib import Path
 from urllib.parse import urlencode
 from urllib.request import urlopen
@@ -9,6 +10,7 @@ from urllib.request import urlopen
 
 ADDRESS_LAYER = "https://mapspublic.aklc.govt.nz/arcgis/rest/services/Address/MapServer/0/query"
 PROPERTY_LAYER = "https://mapspublic.aklc.govt.nz/arcgis/rest/services/Landbase/MapServer/36/query"
+PARCEL_LAYER = "https://mapspublic.aklc.govt.nz/arcgis/rest/services/Landbase/MapServer/38/query"
 AERIAL_EXPORT = "https://mapspublic.aklc.govt.nz/arcgis/rest/services/Raster/AerialPhotography20242025/MapServer/export"
 
 
@@ -34,6 +36,50 @@ def ring_bbox(rings):
     return min(xs), min(ys), max(xs), max(ys)
 
 
+def parse_legal_descriptions(legal_description):
+    if not legal_description:
+        return []
+    matches = re.findall(r"(?:\d+/\d+\s+SH\s+)?LOT\s+\d+\s+DP\s+\d+", legal_description.upper())
+    cleaned = []
+    for token in matches:
+        token = re.sub(r"^\d+/\d+\s+SH\s+", "", token).strip()
+        if token and token not in cleaned:
+            cleaned.append(token)
+    return cleaned
+
+
+def query_parcels_for_legal_descriptions(descriptions):
+    if not descriptions:
+        return []
+    quoted = ",".join(f"'{d}'" for d in descriptions)
+    parcel_data = fetch_json(
+        PARCEL_LAYER,
+        {
+            "where": f"upper(ParcelDescription) in ({quoted})",
+            "outFields": "LINZparcelID,ParcelDescription,ParcelArea,ParcelType,PlanType,PlanNumber,OBJECTID",
+            "returnGeometry": "true",
+            "f": "pjson",
+        },
+    )
+    features = parcel_data.get("features", [])
+    matched = []
+    target = set(descriptions)
+    for feature in features:
+        desc = (feature.get("attributes", {}).get("ParcelDescription") or "").upper()
+        if desc in target:
+            matched.append(feature)
+    return matched
+
+
+def merge_rings_from_features(features):
+    rings = []
+    for feature in features:
+        geom = feature.get("geometry", {})
+        for ring in geom.get("rings", []):
+            rings.append(ring)
+    return rings
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Fetch Auckland Council address, property boundary, and aerial context."
@@ -55,6 +101,12 @@ def main():
         "--image-size",
         default="1200,1200",
         help="Export image size as width,height",
+    )
+    parser.add_argument(
+        "--boundary-mode",
+        choices=("legal_parcel", "property"),
+        default="legal_parcel",
+        help="Boundary source: legal-parcel merge (default) or property polygon.",
     )
     args = parser.parse_args()
 
@@ -84,7 +136,7 @@ def main():
             "geometryType": "esriGeometryPoint",
             "inSR": 2193,
             "spatialRel": "esriSpatialRelIntersects",
-            "outFields": "PROPERTYID,ADDRESSINONELINE,PROPERTYAREA,PROPERTYTYPE,VALUATIONREF",
+            "outFields": "PROPERTYID,ADDRESSINONELINE,PROPERTYAREA,PROPERTYTYPE,VALUATIONREF,PROPERTYDESCRIPTION,FORMATTEDTITLES",
             "returnGeometry": "true",
             "f": "pjson",
         },
@@ -94,7 +146,20 @@ def main():
         raise SystemExit(f"No property polygon found for address: {args.address}")
 
     property_feature = property_features[0]
-    rings = property_feature["geometry"]["rings"]
+    property_rings = property_feature["geometry"]["rings"]
+    legal_descriptions = parse_legal_descriptions(
+        property_feature.get("attributes", {}).get("PROPERTYDESCRIPTION")
+    )
+    parcel_features = query_parcels_for_legal_descriptions(legal_descriptions)
+    parcel_rings = merge_rings_from_features(parcel_features)
+
+    boundary_rings = property_rings
+    boundary_source = "property"
+    if args.boundary_mode == "legal_parcel" and parcel_rings:
+        boundary_rings = parcel_rings
+        boundary_source = "legal_parcel"
+
+    rings = boundary_rings
     xmin, ymin, xmax, ymax = ring_bbox(rings)
     pad = args.padding_m
     bbox = [xmin - pad, ymin - pad, xmax + pad, ymax + pad]
@@ -117,7 +182,19 @@ def main():
         "matched_address": address_feature["attributes"]["FullAddress"],
         "address_point": address_point,
         "property": property_feature["attributes"],
-        "property_geometry": property_feature["geometry"],
+        "property_geometry": {
+            "rings": rings,
+        },
+        "boundary_source": boundary_source,
+        "property_geometry_raw": property_feature["geometry"],
+        "legal_descriptions": legal_descriptions,
+        "parcel_matches": [
+            {
+                "attributes": f.get("attributes", {}),
+                "geometry": f.get("geometry", {}),
+            }
+            for f in parcel_features
+        ],
         "bbox_2193": {
             "xmin": bbox[0],
             "ymin": bbox[1],
@@ -127,6 +204,7 @@ def main():
         "services": {
             "address_layer": ADDRESS_LAYER,
             "property_layer": PROPERTY_LAYER,
+            "parcel_layer": PARCEL_LAYER,
             "aerial_export": AERIAL_EXPORT,
         },
     }
