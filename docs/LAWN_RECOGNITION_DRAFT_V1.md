@@ -1,4 +1,4 @@
-# Lawn Recognition Draft V1
+# Lawn Recognition Draft V1.1
 
 ## Scope
 
@@ -24,10 +24,12 @@ This is a draft lawn-candidate extraction pipeline built on generated top-view i
 5. Extract connected components and keep components whose area is `>= min_area_m2`.
    - area conversion uses world bounds from `topview_metadata.json`
 6. Refine mask with light closing.
-7. Extract simplified polygon with contour + RDP (`polygon_epsilon_px`).
-8. Export:
+7. Apply conservative inward offset on the retained lawn mask (`inset_m`) to reduce noisy boundary edges.
+8. Extract simplified polygon with contour + RDP (`polygon_epsilon_px`) from the inset mask.
+9. Export:
    - binary mask
    - overlay preview
+   - optional inset mask / inset overlay preview
    - optional polygon overlay
    - optional review JSON + click review HTML
 
@@ -35,19 +37,34 @@ This is a draft lawn-candidate extraction pipeline built on generated top-view i
 
 - `--min-area-m2` (default `30.0`)
 - `--min-width-m` (default `1.6`)
+- `--inset-m` (default `0.45`)
 - `--polygon-epsilon-px` (default `18.0`)
 
 ## Current Strengths
 
 - Removes many tiny false-positive green fragments.
 - Uses real-world area filtering (m2), not only pixel count.
-- Produces a simplified polygon that is directly editable in later UI steps.
+- Produces a cleaner, conservative polygon draft by fitting on inward-offset mask.
+- Keeps output directly editable in later UI steps.
 
 ## Current Gaps
 
 - Still rule-based; sensitive to color and scan conditions.
 - Can over-connect nearby green regions under heavy tree-shadow or sparse data.
 - Polygon is a first draft and still needs user correction in boundary editor.
+- Inset can under-cover edge grass if too aggressive for a given property.
+
+## Latest Trial Snapshot
+
+- Trial command used real site data and metadata bundle.
+- Current output summary:
+  - kept components: `1`
+  - pixel area scale: `0.00304 m2/px`
+  - largest retained area: `244.4 m2`
+  - simplified polygon vertices: `14`
+- Practical effect:
+  - boundary is less noisy than raw mask edge
+  - polygon is more suitable for manual control-point adjustment
 
 ## Recommended Next Iterations
 
@@ -66,7 +83,10 @@ This is a draft lawn-candidate extraction pipeline built on generated top-view i
   --metadata ".codex-artifacts/topview/stage1_bundle/topview_metadata.json" \
   --min-area-m2 30 \
   --min-width-m 1.6 \
+  --inset-m 0.45 \
   --polygon-epsilon-px 18 \
+  --output-inset-mask ".codex-artifacts/topview/stage2_lawn/lawn_inset_mask.png" \
+  --output-inset-overlay ".codex-artifacts/topview/stage2_lawn/lawn_inset_overlay.png" \
   --output-metadata ".codex-artifacts/topview/stage2_lawn/lawn_review_data.json" \
   --output-review ".codex-artifacts/topview/stage1_bundle/lawn_review.html" \
   --output-polygon-overlay ".codex-artifacts/topview/stage2_lawn/lawn_polygon_overlay.png"

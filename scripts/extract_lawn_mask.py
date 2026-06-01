@@ -266,6 +266,24 @@ def build_parser():
         help="RDP simplification tolerance in pixels",
     )
     parser.add_argument(
+        "--inset-m",
+        type=float,
+        default=0.45,
+        help="Conservative inward offset in meters before polygon fitting",
+    )
+    parser.add_argument(
+        "--output-inset-mask",
+        type=Path,
+        default=None,
+        help="Optional inset binary mask PNG",
+    )
+    parser.add_argument(
+        "--output-inset-overlay",
+        type=Path,
+        default=None,
+        help="Optional inset overlay preview PNG",
+    )
+    parser.add_argument(
         "--output-polygon-overlay",
         type=Path,
         default=None,
@@ -507,7 +525,13 @@ def main():
         for x, y in summary["pixels"]:
             final_mask[y, x] = True
 
-    polygon = extract_polygon_from_mask(final_mask, args.polygon_epsilon_px)
+    inset_radius_px = max(0, int(round(args.inset_m / max(meters_per_px, 1e-9))))
+    inset_mask = binary_erode(final_mask, inset_radius_px) if inset_radius_px > 0 else final_mask.copy()
+    if not np.any(inset_mask):
+        inset_mask = final_mask.copy()
+        inset_radius_px = 0
+
+    polygon = extract_polygon_from_mask(inset_mask, args.polygon_epsilon_px)
 
     args.output_mask.parent.mkdir(parents=True, exist_ok=True)
     args.output_overlay.parent.mkdir(parents=True, exist_ok=True)
@@ -520,6 +544,17 @@ def main():
     alpha = 0.42
     overlay[final_mask] = ((1 - alpha) * overlay[final_mask] + alpha * green).astype(np.uint8)
     Image.fromarray(overlay).save(args.output_overlay)
+
+    if args.output_inset_mask is not None:
+        args.output_inset_mask.parent.mkdir(parents=True, exist_ok=True)
+        inset_u8 = (inset_mask.astype(np.uint8) * 255)
+        Image.fromarray(inset_u8).save(args.output_inset_mask)
+
+    if args.output_inset_overlay is not None:
+        args.output_inset_overlay.parent.mkdir(parents=True, exist_ok=True)
+        inset_overlay = np.asarray(img).copy()
+        inset_overlay[inset_mask] = ((1 - alpha) * inset_overlay[inset_mask] + alpha * green).astype(np.uint8)
+        Image.fromarray(inset_overlay).save(args.output_inset_overlay)
 
     if args.output_polygon_overlay is not None:
         from PIL import ImageDraw
@@ -540,6 +575,8 @@ def main():
         },
         "min_area_m2": float(args.min_area_m2),
         "min_width_m": float(args.min_width_m),
+        "inset_m": float(args.inset_m),
+        "inset_radius_px": int(inset_radius_px),
         "pixel_area_m2": float(pixel_area_m2),
         "world_bounds": meta["world_bounds"],
         "kept_components": refined_components,
