@@ -80,6 +80,39 @@ def merge_rings_from_features(features):
     return rings
 
 
+def safe_float(value):
+    try:
+        return float(value)
+    except Exception:
+        return None
+
+
+def choose_main_parcel(parcel_features, legal_descriptions, property_area):
+    if not parcel_features:
+        return None
+
+    first_legal = legal_descriptions[0] if legal_descriptions else None
+    if first_legal:
+        for feature in parcel_features:
+            desc = (feature.get("attributes", {}).get("ParcelDescription") or "").upper()
+            if desc == first_legal:
+                return feature
+
+    target_area = safe_float(property_area)
+    if target_area is not None:
+        ranked = []
+        for feature in parcel_features:
+            area = safe_float(feature.get("attributes", {}).get("ParcelArea"))
+            if area is None:
+                continue
+            ranked.append((abs(area - target_area), feature))
+        if ranked:
+            ranked.sort(key=lambda item: item[0])
+            return ranked[0][1]
+
+    return parcel_features[0]
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Fetch Auckland Council address, property boundary, and aerial context."
@@ -104,9 +137,9 @@ def main():
     )
     parser.add_argument(
         "--boundary-mode",
-        choices=("legal_parcel", "property"),
-        default="legal_parcel",
-        help="Boundary source: legal-parcel merge (default) or property polygon.",
+        choices=("main_parcel", "legal_parcel", "property"),
+        default="main_parcel",
+        help="Boundary source: main_parcel (default), legal_parcel merge, or property polygon.",
     )
     args = parser.parse_args()
 
@@ -152,12 +185,20 @@ def main():
     )
     parcel_features = query_parcels_for_legal_descriptions(legal_descriptions)
     parcel_rings = merge_rings_from_features(parcel_features)
+    main_parcel = choose_main_parcel(
+        parcel_features,
+        legal_descriptions,
+        property_feature.get("attributes", {}).get("PROPERTYAREA"),
+    )
 
     boundary_rings = property_rings
     boundary_source = "property"
     if args.boundary_mode == "legal_parcel" and parcel_rings:
         boundary_rings = parcel_rings
         boundary_source = "legal_parcel"
+    elif args.boundary_mode == "main_parcel" and main_parcel:
+        boundary_rings = main_parcel.get("geometry", {}).get("rings", property_rings)
+        boundary_source = "main_parcel"
 
     rings = boundary_rings
     xmin, ymin, xmax, ymax = ring_bbox(rings)
@@ -188,6 +229,10 @@ def main():
         "boundary_source": boundary_source,
         "property_geometry_raw": property_feature["geometry"],
         "legal_descriptions": legal_descriptions,
+        "main_parcel": {
+            "attributes": main_parcel.get("attributes", {}),
+            "geometry": main_parcel.get("geometry", {}),
+        } if main_parcel else None,
         "parcel_matches": [
             {
                 "attributes": f.get("attributes", {}),
