@@ -1,0 +1,370 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Registration Lab</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f4f1e9;
+      --panel: #fffdf7;
+      --line: #d7cfbf;
+      --ink: #1f1d19;
+      --muted: #6b665d;
+      --ok: #1b8d53;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--ink);
+      background: var(--bg);
+    }
+    .page {
+      max-width: 1560px;
+      margin: 0 auto;
+      padding: 16px;
+      display: grid;
+      grid-template-columns: 360px minmax(0, 1fr);
+      gap: 16px;
+    }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px;
+    }
+    h1 {
+      margin: 0 0 8px 0;
+      font-size: 26px;
+    }
+    p {
+      margin: 0 0 10px 0;
+      color: var(--muted);
+      line-height: 1.45;
+    }
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 10px 0 12px;
+    }
+    button {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 8px 12px;
+      background: #fff;
+      color: var(--ink);
+      cursor: pointer;
+      font-size: 14px;
+    }
+    button.primary {
+      background: var(--ok);
+      border-color: var(--ok);
+      color: #fff;
+    }
+    .status {
+      font-size: 14px;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+    .meta {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px 12px;
+      font-size: 14px;
+    }
+    .meta strong {
+      color: var(--ink);
+    }
+    .workspace {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+    .viewer {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px;
+    }
+    .viewer h2 {
+      margin: 0 0 10px 0;
+      font-size: 16px;
+    }
+    .canvas-wrap {
+      position: relative;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+      background: #fff;
+    }
+    .canvas-wrap img, .canvas-wrap canvas {
+      display: block;
+      width: 100%;
+      height: auto;
+    }
+    .canvas-wrap canvas {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+      margin-top: 8px;
+    }
+    th, td {
+      border: 1px solid var(--line);
+      padding: 6px;
+      text-align: left;
+    }
+    @media (max-width: 1100px) {
+      .page { grid-template-columns: 1fr; }
+      .workspace { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <section class="card">
+      <h1>Registration Lab</h1>
+      <p>Click one point on PointCloud image, then one point on Council aerial. Repeat for 3-6 pairs.</p>
+      <div class="status" id="statusText">Loading metadata...</div>
+      <div class="controls">
+        <button id="undoBtn" type="button">Undo Last Pair</button>
+        <button id="clearBtn" type="button">Clear All</button>
+        <button id="copyBtn" class="primary" type="button">Copy JSON</button>
+      </div>
+      <div class="meta">
+        <span>Pairs</span><strong id="pairCount">0</strong>
+        <span>PointCloud SR</span><strong>local XY</strong>
+        <span>Council SR</span><strong>NZTM (EPSG:2193)</strong>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>PC px</th>
+            <th>Council px</th>
+            <th>PC XY</th>
+            <th>Council XY</th>
+          </tr>
+        </thead>
+        <tbody id="pairRows"></tbody>
+      </table>
+    </section>
+    <section class="workspace">
+      <article class="viewer">
+        <h2>PointCloud Crop</h2>
+        <div class="canvas-wrap" id="pcWrap">
+          <img id="pcImage" src="../.codex-artifacts/topview/stage1_bundle/topview_crop.png" alt="pointcloud crop">
+          <canvas id="pcCanvas"></canvas>
+        </div>
+      </article>
+      <article class="viewer">
+        <h2>Council Aerial</h2>
+        <div class="canvas-wrap" id="councilWrap">
+          <img id="councilImage" src="../.codex-artifacts/council-context/127-captain-springs-road-te-papapa-auckland-1061.png" alt="council aerial">
+          <canvas id="councilCanvas"></canvas>
+        </div>
+      </article>
+    </section>
+  </div>
+
+  <script>
+    const pcMetaUrl = "../.codex-artifacts/topview/stage1_bundle/topview_metadata.json";
+    const councilMetaUrl = "../.codex-artifacts/council-context/127-captain-springs-road-te-papapa-auckland-1061.json";
+
+    const statusText = document.getElementById("statusText");
+    const pairCount = document.getElementById("pairCount");
+    const pairRows = document.getElementById("pairRows");
+    const undoBtn = document.getElementById("undoBtn");
+    const clearBtn = document.getElementById("clearBtn");
+    const copyBtn = document.getElementById("copyBtn");
+
+    const pcImage = document.getElementById("pcImage");
+    const councilImage = document.getElementById("councilImage");
+    const pcCanvas = document.getElementById("pcCanvas");
+    const councilCanvas = document.getElementById("councilCanvas");
+    const pcCtx = pcCanvas.getContext("2d");
+    const councilCtx = councilCanvas.getContext("2d");
+
+    let pcMeta = null;
+    let councilMeta = null;
+    const pairs = [];
+    let pendingPc = null;
+
+    function fitCanvasToImage(img, canvas) {
+      canvas.width = img.clientWidth;
+      canvas.height = img.clientHeight;
+    }
+
+    function drawPoint(ctx, x, y, label, color) {
+      ctx.beginPath();
+      ctx.arc(x, y, 5, 0, Math.PI * 2);
+      ctx.fillStyle = color;
+      ctx.fill();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = "#ffffff";
+      ctx.stroke();
+      ctx.font = "12px sans-serif";
+      ctx.fillStyle = color;
+      ctx.fillText(String(label), x + 8, y - 8);
+    }
+
+    function redraw() {
+      pcCtx.clearRect(0, 0, pcCanvas.width, pcCanvas.height);
+      councilCtx.clearRect(0, 0, councilCanvas.width, councilCanvas.height);
+      pairs.forEach((pair, idx) => {
+        drawPoint(pcCtx, pair.pcPixel.xView, pair.pcPixel.yView, idx + 1, "#1f8f5a");
+        drawPoint(councilCtx, pair.councilPixel.xView, pair.councilPixel.yView, idx + 1, "#c44e29");
+      });
+      if (pendingPc) {
+        drawPoint(pcCtx, pendingPc.xView, pendingPc.yView, "*", "#2c66c3");
+      }
+      pairCount.textContent = String(pairs.length);
+      renderRows();
+    }
+
+    function renderRows() {
+      pairRows.innerHTML = "";
+      pairs.forEach((pair, idx) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${idx + 1}</td>
+          <td>${pair.pcPixel.xImage.toFixed(1)}, ${pair.pcPixel.yImage.toFixed(1)}</td>
+          <td>${pair.councilPixel.xImage.toFixed(1)}, ${pair.councilPixel.yImage.toFixed(1)}</td>
+          <td>${pair.pcWorld.x.toFixed(3)}, ${pair.pcWorld.y.toFixed(3)}</td>
+          <td>${pair.councilWorld.x.toFixed(3)}, ${pair.councilWorld.y.toFixed(3)}</td>
+        `;
+        pairRows.appendChild(tr);
+      });
+    }
+
+    function pointcloudPixelToWorld(px, py) {
+      const w = pcMeta.crop_image.width;
+      const h = pcMeta.crop_image.height;
+      const wb = pcMeta.world_bounds;
+      const x = wb.x_min + (px / Math.max(w - 1, 1)) * (wb.x_max - wb.x_min);
+      const y = wb.y_max - (py / Math.max(h - 1, 1)) * (wb.y_max - wb.y_min);
+      return { x, y };
+    }
+
+    function councilPixelToWorld(px, py) {
+      const bbox = councilMeta.bbox_2193;
+      const imageW = 1200;
+      const imageH = 1200;
+      const x = bbox.xmin + (px / Math.max(imageW - 1, 1)) * (bbox.xmax - bbox.xmin);
+      const y = bbox.ymax - (py / Math.max(imageH - 1, 1)) * (bbox.ymax - bbox.ymin);
+      return { x, y };
+    }
+
+    function getImagePixel(evt, img) {
+      const rect = img.getBoundingClientRect();
+      const xView = evt.clientX - rect.left;
+      const yView = evt.clientY - rect.top;
+      const xImage = (xView / rect.width) * img.naturalWidth;
+      const yImage = (yView / rect.height) * img.naturalHeight;
+      return { xView, yView, xImage, yImage };
+    }
+
+    function exportJson() {
+      const payload = {
+        version: "registration-pairs-v1",
+        pointcloud_meta: pcMeta,
+        council_meta: {
+          requested_address: councilMeta.requested_address,
+          matched_address: councilMeta.matched_address,
+          bbox_2193: councilMeta.bbox_2193
+        },
+        pairs
+      };
+      return JSON.stringify(payload, null, 2);
+    }
+
+    function copyJson() {
+      navigator.clipboard.writeText(exportJson()).then(() => {
+        statusText.textContent = "Pair JSON copied. Save it to a file for transform fitting.";
+      }).catch(() => {
+        statusText.textContent = "Clipboard copy blocked. Open DevTools and copy from console.";
+        console.log(exportJson());
+      });
+    }
+
+    function wireHandlers() {
+      pcImage.addEventListener("click", (evt) => {
+        if (!pcMeta || !councilMeta) return;
+        const p = getImagePixel(evt, pcImage);
+        pendingPc = {
+          ...p,
+          world: pointcloudPixelToWorld(p.xImage, p.yImage)
+        };
+        statusText.textContent = "PointCloud point picked. Now click matching point on Council image.";
+        redraw();
+      });
+
+      councilImage.addEventListener("click", (evt) => {
+        if (!pendingPc) {
+          statusText.textContent = "Pick a PointCloud point first.";
+          return;
+        }
+        const p = getImagePixel(evt, councilImage);
+        const pair = {
+          pcPixel: pendingPc,
+          councilPixel: {
+            ...p,
+            world: councilPixelToWorld(p.xImage, p.yImage)
+          },
+          pcWorld: pendingPc.world,
+          councilWorld: councilPixelToWorld(p.xImage, p.yImage)
+        };
+        pairs.push(pair);
+        pendingPc = null;
+        statusText.textContent = "Pair added. Continue picking or export JSON.";
+        redraw();
+      });
+
+      undoBtn.addEventListener("click", () => {
+        if (pendingPc) {
+          pendingPc = null;
+        } else if (pairs.length > 0) {
+          pairs.pop();
+        }
+        redraw();
+      });
+
+      clearBtn.addEventListener("click", () => {
+        pairs.length = 0;
+        pendingPc = null;
+        redraw();
+      });
+
+      copyBtn.addEventListener("click", copyJson);
+      window.addEventListener("resize", () => {
+        fitCanvasToImage(pcImage, pcCanvas);
+        fitCanvasToImage(councilImage, councilCanvas);
+        redraw();
+      });
+    }
+
+    Promise.all([
+      fetch(pcMetaUrl).then((r) => r.json()),
+      fetch(councilMetaUrl).then((r) => r.json())
+    ]).then(([pc, council]) => {
+      pcMeta = pc;
+      councilMeta = council;
+      fitCanvasToImage(pcImage, pcCanvas);
+      fitCanvasToImage(councilImage, councilCanvas);
+      wireHandlers();
+      redraw();
+      statusText.textContent = "Ready. Pick PointCloud point then matching Council point.";
+    }).catch((err) => {
+      statusText.textContent = "Failed to load metadata JSON files.";
+      console.error(err);
+    });
+  </script>
+</body>
+</html>
