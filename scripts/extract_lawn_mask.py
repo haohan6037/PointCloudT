@@ -6,7 +6,7 @@ from collections import deque
 from pathlib import Path
 
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageDraw
 
 
 REVIEW_HTML = """<!doctype html>
@@ -289,6 +289,24 @@ def build_parser():
         default=None,
         help="Optional polygon outline preview PNG",
     )
+    parser.add_argument(
+        "--council-meta",
+        type=Path,
+        default=None,
+        help="Optional council context JSON (for parcel clipping)",
+    )
+    parser.add_argument(
+        "--registration-transform",
+        type=Path,
+        default=None,
+        help="Optional similarity transform JSON from fit_similarity_transform.py",
+    )
+    parser.add_argument(
+        "--output-parcel-clip-overlay",
+        type=Path,
+        default=None,
+        help="Optional parcel clip overlay preview PNG",
+    )
     return parser
 
 
@@ -370,6 +388,103 @@ def load_pixel_area_m2(metadata_path):
     meters_per_px_x = (world["x_max"] - world["x_min"]) / max(crop["width"], 1)
     meters_per_px_y = (world["y_max"] - world["y_min"]) / max(crop["height"], 1)
     return meta, meters_per_px_x * meters_per_px_y
+
+
+def inverse_similarity(x, y, transform):
+    a = float(transform["a"])
+    b = float(transform["b"])
+    tx = float(transform["tx"])
+    ty = float(transform["ty"])
+    den = a * a + b * b
+    if den < 1e-12:
+        return None
+    dx = x - tx
+    dy = y - ty
+    return {
+        "x": (a * dx + b * dy) / den,
+        "y": (-b * dx + a * dy) / den,
+    }
+
+
+def pick_council_rings(council_meta):
+    mode = council_meta.get("boundary_mode")
+    if mode == "main_parcel":
+        main = council_meta.get("main_parcel", {})
+        geom = main.get("geometry", {})
+        rings = geom.get("rings", [])
+        if rings:
+            return rings, "main_parcel"
+    if mode == "legal_parcel":
+        geom = council_meta.get("legal_parcel_geometry", {})
+        rings = geom.get("rings", [])
+        if rings:
+            return rings, "legal_parcel"
+    geom = council_meta.get("property_geometry", {})
+    rings = geom.get("rings", [])
+    return rings, "property"
+
+
+def pc_world_to_crop_pixel(world_pt, pc_meta):
+    world = pc_meta["world_bounds"]
+    crop = pc_meta["crop_image"]
+    width = max(int(crop["width"]), 1)
+    height = max(int(crop["height"]), 1)
+    px = ((world_pt["x"] - world["x_min"]) / max(world["x_max"] - world["x_min"], 1e-9)) * (width - 1)
+    py = ((world["y_max"] - world_pt["y"]) / max(world["y_max"] - world["y_min"], 1e-9)) * (height - 1)
+    return {"x": float(px), "y": float(py)}
+
+
+def build_parcel_clip_mask(image_w, image_h, pc_meta, council_meta, transform_json):
+    council_data = json.loads(council_meta.read_text(encoding="utf-8"))
+    transform_data = json.loads(transform_json.read_text(encoding="utf-8"))
+    tf = transform_data["transform"]
+    rings_world, ring_source = pick_council_rings(council_data)
+    if not rings_world:
+        return np.ones((image_h, image_w), dtype=bool), {"enabled": False, "reason": "no_rings"}
+
+    crop = pc_meta["crop_image"]
+    crop_w = max(int(crop["width"]), 1)
+    crop_h = max(int(crop["height"]), 1)
+    sx = image_w / float(crop_w)
+    sy = image_h / float(crop_h)
+
+    rings_img = []
+    for ring in rings_world:
+        pts = []
+        for x, y in ring:
+            pc_world = inverse_similarity(float(x), float(y), tf)
+            if pc_world is None:
+                continue
+            px = pc_world_to_crop_pixel(pc_world, pc_meta)
+            pts.append((px["x"] * sx, px["y"] * sy))
+        if len(pts) >= 3:
+            rings_img.append(pts)
+
+    if not rings_img:
+        return np.ones((image_h, image_w), dtype=bool), {"enabled": False, "reason": "no_projected_polygon"}
+
+    mask_img = Image.new("L", (image_w, image_h), 0)
+    draw = ImageDraw.Draw(mask_img)
+    for pts in rings_img:
+        draw.polygon(pts, fill=255)
+
+    mask = np.asarray(mask_img, dtype=np.uint8) > 0
+    clip_info = {
+        "enabled": True,
+        "boundary_source": ring_source,
+        "rings": [
+            [{"x": float(x), "y": float(y)} for x, y in pts]
+            for pts in rings_img
+        ],
+        "transform": {
+            "a": float(tf["a"]),
+            "b": float(tf["b"]),
+            "tx": float(tf["tx"]),
+            "ty": float(tf["ty"]),
+        },
+        "rmse_m": float(transform_data.get("rmse_m", 0.0)),
+    }
+    return mask, clip_info
 
 
 def extract_components(mask):
@@ -502,6 +617,18 @@ def main():
     width_filtered = binary_open(smooth, width_radius_px)
     width_filtered = binary_close(width_filtered, max(1, width_radius_px // 2))
 
+    parcel_clip_mask = np.ones_like(width_filtered, dtype=bool)
+    parcel_clip_info = {"enabled": False, "reason": "not_requested"}
+    if args.council_meta is not None and args.registration_transform is not None:
+        parcel_clip_mask, parcel_clip_info = build_parcel_clip_mask(
+            width_filtered.shape[1],
+            width_filtered.shape[0],
+            meta,
+            args.council_meta,
+            args.registration_transform,
+        )
+        width_filtered = width_filtered & parcel_clip_mask
+
     components = extract_components(width_filtered)
     kept_components = []
     keep_mask = np.zeros_like(width_filtered, dtype=bool)
@@ -524,6 +651,7 @@ def main():
     for summary in refined_components:
         for x, y in summary["pixels"]:
             final_mask[y, x] = True
+    final_mask = final_mask & parcel_clip_mask
 
     inset_radius_px = max(0, int(round(args.inset_m / max(meters_per_px, 1e-9))))
     inset_mask = binary_erode(final_mask, inset_radius_px) if inset_radius_px > 0 else final_mask.copy()
@@ -557,8 +685,6 @@ def main():
         Image.fromarray(inset_overlay).save(args.output_inset_overlay)
 
     if args.output_polygon_overlay is not None:
-        from PIL import ImageDraw
-
         args.output_polygon_overlay.parent.mkdir(parents=True, exist_ok=True)
         polygon_overlay = np.asarray(img).copy()
         polygon_image = Image.fromarray(polygon_overlay)
@@ -567,6 +693,16 @@ def main():
             line_points = [(pt["x"], pt["y"]) for pt in polygon] + [(polygon[0]["x"], polygon[0]["y"])]
             draw.line(line_points, fill=(16, 134, 74), width=6)
         polygon_image.save(args.output_polygon_overlay)
+
+    if args.output_parcel_clip_overlay is not None:
+        args.output_parcel_clip_overlay.parent.mkdir(parents=True, exist_ok=True)
+        clip_overlay = np.asarray(img).copy()
+        clip_rgb = np.array([35, 145, 95], dtype=np.uint8)
+        clip_alpha = 0.26
+        clip_overlay[parcel_clip_mask] = (
+            (1 - clip_alpha) * clip_overlay[parcel_clip_mask] + clip_alpha * clip_rgb
+        ).astype(np.uint8)
+        Image.fromarray(clip_overlay).save(args.output_parcel_clip_overlay)
 
     review_data = {
         "image": {
@@ -579,6 +715,7 @@ def main():
         "inset_radius_px": int(inset_radius_px),
         "pixel_area_m2": float(pixel_area_m2),
         "world_bounds": meta["world_bounds"],
+        "parcel_clip": parcel_clip_info,
         "kept_components": refined_components,
         "polygon": polygon,
     }

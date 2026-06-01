@@ -136,6 +136,7 @@
       <div class="controls">
         <button id="undoBtn" type="button">Undo Last Pair</button>
         <button id="clearBtn" type="button">Clear All</button>
+        <button id="previewBtn" type="button">Preview Parcel On PointCloud</button>
         <button id="copyBtn" class="primary" type="button">Copy JSON</button>
       </div>
       <div class="meta">
@@ -144,6 +145,7 @@
         <span>Council SR</span><strong>NZTM (EPSG:2193)</strong>
         <span>Boundary Source</span><strong id="boundarySource">-</strong>
         <span>Main Parcel</span><strong id="mainParcelDesc">-</strong>
+        <span>Preview RMSE (m)</span><strong id="previewRmse">-</strong>
       </div>
       <table>
         <thead>
@@ -189,7 +191,9 @@
     const pairRows = document.getElementById("pairRows");
     const undoBtn = document.getElementById("undoBtn");
     const clearBtn = document.getElementById("clearBtn");
+    const previewBtn = document.getElementById("previewBtn");
     const copyBtn = document.getElementById("copyBtn");
+    const previewRmseEl = document.getElementById("previewRmse");
 
     const pcImage = document.getElementById("pcImage");
     const councilImage = document.getElementById("councilImage");
@@ -202,7 +206,9 @@
     let councilMeta = null;
     const pairs = [];
     let pendingPc = null;
+    let councilBoundaryRingsWorld = [];
     let councilMaskRingsImage = [];
+    let projectedParcelOnPcImage = [];
     const assetVersion = String(Date.now());
 
     function withVersion(url) {
@@ -231,6 +237,20 @@
       ctx.fillText(String(label), x + 8, y - 8);
     }
 
+    function getSelectedCouncilGeometry() {
+      const mode = councilMeta.boundary_mode;
+      const mainGeom = councilMeta.main_parcel && councilMeta.main_parcel.geometry;
+      const legalGeom = councilMeta.legal_parcel_geometry;
+      const propertyGeom = councilMeta.property_geometry;
+      if (mode === "main_parcel" && mainGeom && Array.isArray(mainGeom.rings) && mainGeom.rings.length) {
+        return mainGeom;
+      }
+      if (mode === "legal_parcel" && legalGeom && Array.isArray(legalGeom.rings) && legalGeom.rings.length) {
+        return legalGeom;
+      }
+      return propertyGeom;
+    }
+
     function councilWorldToImage(x, y) {
       const bbox = getCouncilExtent();
       const imageW = councilImage.naturalWidth || (councilMeta.export_image && councilMeta.export_image.width) || 1200;
@@ -248,20 +268,147 @@
     }
 
     function buildCouncilMaskGeometry() {
-      const mode = councilMeta.boundary_mode;
-      const mainGeom = councilMeta.main_parcel && councilMeta.main_parcel.geometry;
-      const legalGeom = councilMeta.legal_parcel_geometry;
-      const propertyGeom = councilMeta.property_geometry;
-      let geom = propertyGeom;
-      if (mode === "main_parcel" && mainGeom && Array.isArray(mainGeom.rings) && mainGeom.rings.length) {
-        geom = mainGeom;
-      } else if (mode === "legal_parcel" && legalGeom && Array.isArray(legalGeom.rings) && legalGeom.rings.length) {
-        geom = legalGeom;
-      }
+      const geom = getSelectedCouncilGeometry();
       const rings = (geom && geom.rings) ? geom.rings : [];
+      councilBoundaryRingsWorld = rings.map((ring) => ring.map((xy) => ({ x: xy[0], y: xy[1] })));
       councilMaskRingsImage = rings.map((ring) =>
         ring.map((xy) => councilWorldToImage(xy[0], xy[1]))
       );
+    }
+
+    function pcWorldToImage(x, y) {
+      const w = pcMeta.crop_image.width;
+      const h = pcMeta.crop_image.height;
+      const wb = pcMeta.world_bounds;
+      const px = ((x - wb.x_min) / Math.max(wb.x_max - wb.x_min, 1e-9)) * (w - 1);
+      const py = ((wb.y_max - y) / Math.max(wb.y_max - wb.y_min, 1e-9)) * (h - 1);
+      return { x: px, y: py };
+    }
+
+    function applySimilarityForward(x, y, tf) {
+      return {
+        x: tf.a * x - tf.b * y + tf.tx,
+        y: tf.b * x + tf.a * y + tf.ty,
+      };
+    }
+
+    function applySimilarityInverse(x, y, tf) {
+      const den = tf.a * tf.a + tf.b * tf.b;
+      if (Math.abs(den) < 1e-12) return null;
+      const dx = x - tf.tx;
+      const dy = y - tf.ty;
+      return {
+        x: (tf.a * dx + tf.b * dy) / den,
+        y: (-tf.b * dx + tf.a * dy) / den,
+      };
+    }
+
+    function solveLinearSystem(matrix, vector) {
+      const n = vector.length;
+      const aug = matrix.map((row, i) => row.slice().concat([vector[i]]));
+      for (let col = 0; col < n; col += 1) {
+        let pivotRow = col;
+        let pivotVal = Math.abs(aug[col][col]);
+        for (let r = col + 1; r < n; r += 1) {
+          const v = Math.abs(aug[r][col]);
+          if (v > pivotVal) {
+            pivotVal = v;
+            pivotRow = r;
+          }
+        }
+        if (pivotVal < 1e-12) return null;
+        if (pivotRow !== col) {
+          const tmp = aug[col];
+          aug[col] = aug[pivotRow];
+          aug[pivotRow] = tmp;
+        }
+        const pivot = aug[col][col];
+        for (let c = col; c <= n; c += 1) {
+          aug[col][c] /= pivot;
+        }
+        for (let r = 0; r < n; r += 1) {
+          if (r === col) continue;
+          const factor = aug[r][col];
+          if (Math.abs(factor) < 1e-15) continue;
+          for (let c = col; c <= n; c += 1) {
+            aug[r][c] -= factor * aug[col][c];
+          }
+        }
+      }
+      return aug.map((row) => row[n]);
+    }
+
+    function fitSimilarityFromPairs(inputPairs) {
+      if (inputPairs.length < 2) return null;
+      const ata = Array.from({ length: 4 }, () => Array(4).fill(0));
+      const atb = [0, 0, 0, 0];
+      for (const pair of inputPairs) {
+        const x = Number(pair.pcWorld.x);
+        const y = Number(pair.pcWorld.y);
+        const xp = Number(pair.councilWorld.x);
+        const yp = Number(pair.councilWorld.y);
+        const rows = [
+          { r: [x, -y, 1, 0], v: xp },
+          { r: [y, x, 0, 1], v: yp },
+        ];
+        for (const item of rows) {
+          for (let i = 0; i < 4; i += 1) {
+            atb[i] += item.r[i] * item.v;
+            for (let j = 0; j < 4; j += 1) {
+              ata[i][j] += item.r[i] * item.r[j];
+            }
+          }
+        }
+      }
+      const solved = solveLinearSystem(ata, atb);
+      if (!solved) return null;
+      const tf = {
+        a: solved[0],
+        b: solved[1],
+        tx: solved[2],
+        ty: solved[3],
+      };
+      let errSq = 0;
+      for (const pair of inputPairs) {
+        const pred = applySimilarityForward(Number(pair.pcWorld.x), Number(pair.pcWorld.y), tf);
+        const dx = pred.x - Number(pair.councilWorld.x);
+        const dy = pred.y - Number(pair.councilWorld.y);
+        errSq += dx * dx + dy * dy;
+      }
+      tf.rmse = Math.sqrt(errSq / inputPairs.length);
+      return tf;
+    }
+
+    function buildProjectedParcelOnPointCloud(tf) {
+      projectedParcelOnPcImage = councilBoundaryRingsWorld.map((ring) => {
+        const projected = [];
+        for (const pt of ring) {
+          const pcWorld = applySimilarityInverse(pt.x, pt.y, tf);
+          if (!pcWorld) continue;
+          projected.push(pcWorldToImage(pcWorld.x, pcWorld.y));
+        }
+        return projected;
+      }).filter((ring) => ring.length >= 3);
+    }
+
+    function drawProjectedParcelOnPointCloud() {
+      if (!projectedParcelOnPcImage.length) return;
+      pcCtx.save();
+      pcCtx.beginPath();
+      for (const ring of projectedParcelOnPcImage) {
+        const start = imageToViewPt(ring[0].x, ring[0].y, pcImage, pcCanvas);
+        pcCtx.moveTo(start.x, start.y);
+        for (let i = 1; i < ring.length; i += 1) {
+          const pt = imageToViewPt(ring[i].x, ring[i].y, pcImage, pcCanvas);
+          pcCtx.lineTo(pt.x, pt.y);
+        }
+        pcCtx.closePath();
+      }
+      pcCtx.lineWidth = 2;
+      pcCtx.setLineDash([8, 6]);
+      pcCtx.strokeStyle = "rgba(220, 72, 26, 0.95)";
+      pcCtx.stroke();
+      pcCtx.restore();
     }
 
     function drawCouncilParcelMask() {
@@ -329,6 +476,7 @@
       pcCtx.clearRect(0, 0, pcCanvas.width, pcCanvas.height);
       councilCtx.clearRect(0, 0, councilCanvas.width, councilCanvas.height);
       drawCouncilParcelMask();
+      drawProjectedParcelOnPointCloud();
       pairs.forEach((pair, idx) => {
         drawPoint(pcCtx, pair.pcPixel.xView, pair.pcPixel.yView, idx + 1, "#1f8f5a");
         drawPoint(councilCtx, pair.councilPixel.xView, pair.councilPixel.yView, idx + 1, "#c44e29");
@@ -406,6 +554,25 @@
       });
     }
 
+    function runParcelPreview() {
+      if (!councilBoundaryRingsWorld.length) {
+        statusText.textContent = "Council parcel boundary is not ready yet.";
+        return;
+      }
+      const tf = fitSimilarityFromPairs(pairs);
+      if (!tf) {
+        projectedParcelOnPcImage = [];
+        previewRmseEl.textContent = "-";
+        statusText.textContent = "Need at least 2 valid pairs to preview parcel on pointcloud.";
+        redraw();
+        return;
+      }
+      buildProjectedParcelOnPointCloud(tf);
+      previewRmseEl.textContent = tf.rmse.toFixed(3);
+      statusText.textContent = `Preview ready. Parcel projected to pointcloud (RMSE ${tf.rmse.toFixed(3)}m).`;
+      redraw();
+    }
+
     function wireHandlers() {
       pcImage.addEventListener("click", (evt) => {
         if (!pcMeta || !councilMeta) return;
@@ -455,9 +622,12 @@
       clearBtn.addEventListener("click", () => {
         pairs.length = 0;
         pendingPc = null;
+        projectedParcelOnPcImage = [];
+        previewRmseEl.textContent = "-";
         redraw();
       });
 
+      previewBtn.addEventListener("click", runParcelPreview);
       copyBtn.addEventListener("click", copyJson);
       window.addEventListener("resize", () => {
         fitCanvasToImage(pcImage, pcCanvas);
