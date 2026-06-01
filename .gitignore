@@ -1,0 +1,6 @@
+.DS_Store
+.codex-backups/
+.venv/
+.codex-artifacts/
+*.laz
+*.las

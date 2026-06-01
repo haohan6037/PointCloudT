@@ -1,0 +1,1875 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PointCloudTT Workspace</title>
+    <style>
+      :root {
+        --bg: #f3efe5;
+        --panel: #fffaf2;
+        --ink: #1d1c1a;
+        --muted: #625f58;
+        --line: #d7d0c3;
+        --accent: #0f766e;
+        --accent-2: #d97706;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        color: var(--ink);
+        font-family: "Avenir Next", "PingFang SC", "Noto Sans CJK SC", sans-serif;
+        background:
+          radial-gradient(circle at 20% 0%, #fff7e8 0, transparent 45%),
+          radial-gradient(circle at 100% 0%, #e3f3f0 0, transparent 40%),
+          var(--bg);
+        min-height: 100vh;
+      }
+
+      .app {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 20px;
+      }
+
+      .topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 16px;
+      }
+
+      .brand {
+        font-size: clamp(24px, 4vw, 36px);
+        letter-spacing: 0;
+        margin: 0;
+      }
+
+      .subtitle {
+        margin: 4px 0 0;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .toolbar {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
+      .btn {
+        border: 1px solid var(--line);
+        background: var(--panel);
+        color: var(--ink);
+        font-size: 14px;
+        padding: 9px 12px;
+        border-radius: 8px;
+        cursor: pointer;
+      }
+
+      .btn.primary {
+        background: var(--accent);
+        color: #f8fefc;
+        border-color: transparent;
+      }
+
+      .btn.active-tool {
+        background: #0b5e57;
+        color: #ecfffb;
+        border-color: transparent;
+      }
+
+      .btn.ghost-action {
+        background: #fff;
+        border-style: dashed;
+      }
+
+      .btn.accept-action {
+        background: #166534;
+        color: #f8fff8;
+        border-color: transparent;
+      }
+
+      .layout {
+        display: grid;
+        grid-template-columns: 260px 1fr;
+        gap: 14px;
+      }
+
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+      }
+
+      .side {
+        padding: 14px;
+      }
+
+      .side h2 {
+        margin: 0 0 10px;
+        font-size: 16px;
+      }
+
+      .meta {
+        margin: 10px 0 14px;
+        padding: 10px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fffdf8;
+      }
+
+      .meta h3 {
+        margin: 0 0 8px;
+        font-size: 14px;
+      }
+
+      .meta-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+        font-size: 13px;
+        color: var(--muted);
+        margin: 4px 0;
+      }
+
+      .meta-row strong {
+        color: var(--ink);
+        font-weight: 600;
+      }
+
+      .layer {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 10px;
+        border-radius: 8px;
+        border: 1px solid var(--line);
+        margin-bottom: 8px;
+      }
+
+      .layer .chip {
+        font-size: 12px;
+        color: white;
+        border-radius: 999px;
+        padding: 2px 8px;
+      }
+
+      .chip.base {
+        background: #475569;
+      }
+
+      .chip.boundary {
+        background: var(--accent);
+      }
+
+      .chip.zone {
+        background: var(--accent-2);
+      }
+
+      .task-card {
+        margin: 10px 0 14px;
+        padding: 10px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fffdf8;
+      }
+
+      .task-card h3 {
+        margin: 0 0 8px;
+        font-size: 14px;
+      }
+
+      .task-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        margin-bottom: 8px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .task-badge {
+        border-radius: 999px;
+        padding: 2px 8px;
+        font-size: 12px;
+        color: #fff;
+        background: #64748b;
+      }
+
+      .task-badge.running {
+        background: var(--accent);
+      }
+
+      .task-badge.success {
+        background: #15803d;
+      }
+
+      .task-badge.error {
+        background: #b91c1c;
+      }
+
+      .step-list {
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+
+      .step-list li {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 13px;
+        color: var(--muted);
+        margin: 6px 0;
+      }
+
+      .dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 999px;
+        background: #cbd5e1;
+        flex: 0 0 10px;
+      }
+
+      .step-list li.active {
+        color: var(--ink);
+      }
+
+      .step-list li.active .dot {
+        background: var(--accent);
+      }
+
+      .step-list li.done {
+        color: #166534;
+      }
+
+      .step-list li.done .dot {
+        background: #16a34a;
+      }
+
+      .step-list li.error {
+        color: #991b1b;
+      }
+
+      .step-list li.error .dot {
+        background: #dc2626;
+      }
+
+      .canvas {
+        position: relative;
+        min-height: 560px;
+        overflow: hidden;
+      }
+
+      .grid {
+        position: absolute;
+        inset: 0;
+        background:
+          linear-gradient(to right, #dfd9cc 1px, transparent 1px),
+          linear-gradient(to bottom, #dfd9cc 1px, transparent 1px);
+        background-size: 36px 36px;
+        opacity: 0.6;
+      }
+
+      .map-placeholder {
+        position: absolute;
+        inset: 18px;
+        border-radius: 8px;
+        border: 2px dashed #c7bead;
+        display: grid;
+        place-items: center;
+        color: var(--muted);
+        text-align: center;
+        padding: 16px;
+      }
+
+      .projection-layer {
+        position: absolute;
+        inset: 18px;
+        border-radius: 8px;
+        border: 1px solid #bfb6a8;
+        display: none;
+        overflow: hidden;
+        background:
+          radial-gradient(circle at 24% 30%, rgba(15, 118, 110, 0.22), transparent 38%),
+          radial-gradient(circle at 68% 46%, rgba(217, 119, 6, 0.17), transparent 42%),
+          radial-gradient(circle at 52% 68%, rgba(71, 85, 105, 0.15), transparent 36%),
+          repeating-linear-gradient(
+            35deg,
+            rgba(16, 24, 40, 0.05) 0,
+            rgba(16, 24, 40, 0.05) 2px,
+            rgba(255, 255, 255, 0.03) 2px,
+            rgba(255, 255, 255, 0.03) 7px
+          ),
+          #ece7dd;
+      }
+
+      .projection-layer::before {
+        content: "2D 地面密度底图";
+        position: absolute;
+        left: 12px;
+        bottom: 12px;
+        font-size: 12px;
+        color: #4b5563;
+        background: rgba(255, 255, 255, 0.75);
+        border: 1px solid #d2c8b8;
+        border-radius: 6px;
+        padding: 4px 8px;
+      }
+
+      .boundary-overlay {
+        position: absolute;
+        inset: 18px;
+        z-index: 3;
+      }
+
+      .boundary-overlay svg {
+        width: 100%;
+        height: 100%;
+        display: block;
+      }
+
+      .boundary-fill {
+        fill: rgba(15, 118, 110, 0.18);
+        stroke: #0f766e;
+        stroke-width: 2;
+      }
+
+      .boundary-line {
+        fill: none;
+        stroke: #0f766e;
+        stroke-width: 2;
+        stroke-dasharray: 6 4;
+      }
+
+      .boundary-point {
+        fill: #0f766e;
+        stroke: #f8fefc;
+        stroke-width: 1.5;
+      }
+
+      .candidate-fill {
+        fill: rgba(34, 197, 94, 0.18);
+        stroke: #16a34a;
+        stroke-width: 2.5;
+        stroke-dasharray: 10 6;
+      }
+
+      .nogo-fill {
+        fill: rgba(217, 119, 6, 0.22);
+        stroke: #d97706;
+        stroke-width: 2;
+      }
+
+      .nogo-line {
+        fill: none;
+        stroke: #d97706;
+        stroke-width: 2;
+        stroke-dasharray: 5 4;
+      }
+
+      .nogo-point {
+        fill: #d97706;
+        stroke: #fff9ef;
+        stroke-width: 1.5;
+      }
+
+      .corridor-fill {
+        fill: rgba(37, 99, 235, 0.2);
+        stroke: #2563eb;
+        stroke-width: 2;
+      }
+
+      .corridor-line {
+        fill: none;
+        stroke: #2563eb;
+        stroke-width: 2;
+        stroke-dasharray: 5 4;
+      }
+
+      .corridor-point {
+        fill: #2563eb;
+        stroke: #eff6ff;
+        stroke-width: 1.5;
+      }
+
+      .status {
+        position: absolute;
+        top: 14px;
+        right: 14px;
+        background: #fff;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 8px 10px;
+        font-size: 13px;
+      }
+
+      @media (max-width: 960px) {
+        .layout {
+          grid-template-columns: 1fr;
+        }
+        .canvas {
+          min-height: 420px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <header class="topbar">
+        <div>
+          <h1 class="brand">PointCloudTT</h1>
+          <p class="subtitle">点云转 2D 地图工作台（第一步：基础壳子）</p>
+        </div>
+        <div class="toolbar">
+          <button id="importBtn" class="btn primary" type="button">导入点云</button>
+          <button id="boundaryToolBtn" class="btn" type="button">边界工具</button>
+          <button id="closeBoundaryBtn" class="btn ghost-action" type="button">完成边界</button>
+          <button id="resetBoundaryBtn" class="btn ghost-action" type="button">重绘边界</button>
+          <button id="undoStepBtn" class="btn ghost-action" type="button">撤销一步</button>
+          <button id="acceptCandidateBtn" class="btn accept-action" type="button">接受候选范围</button>
+          <button id="seedCandidateBtn" class="btn ghost-action" type="button">草坪引导点</button>
+          <button id="noGoToolBtn" class="btn" type="button">禁区工具</button>
+          <button id="corridorToolBtn" class="btn" type="button">过道工具</button>
+        </div>
+      </header>
+
+      <main class="layout">
+        <aside class="panel side">
+          <h2>图层</h2>
+          <div class="meta">
+            <h3>点云文件信息</h3>
+            <div class="meta-row"><span>文件名</span><strong id="fileName">未选择</strong></div>
+            <div class="meta-row"><span>文件大小</span><strong id="fileSize">-</strong></div>
+            <div class="meta-row"><span>文件类型</span><strong id="fileType">-</strong></div>
+            <div class="meta-row"><span>点数量</span><strong id="pointCount">-</strong></div>
+            <div class="meta-row"><span>X 范围</span><strong id="rangeX">-</strong></div>
+            <div class="meta-row"><span>Y 范围</span><strong id="rangeY">-</strong></div>
+            <div class="meta-row"><span>Z 范围</span><strong id="rangeZ">-</strong></div>
+            <div class="meta-row"><span>投影采样</span><strong id="sampleCount">-</strong></div>
+            <div class="meta-row"><span>地面采样</span><strong id="groundSampleCount">-</strong></div>
+          </div>
+          <div class="task-card">
+            <h3>解析任务状态</h3>
+            <div class="task-head">
+              <span id="taskSummary">等待导入点云</span>
+              <span id="taskBadge" class="task-badge">空闲</span>
+            </div>
+            <ol id="stepList" class="step-list">
+              <li data-step="queued"><span class="dot"></span><span>排队中</span></li>
+              <li data-step="parsing"><span class="dot"></span><span>解析中</span></li>
+              <li data-step="done"><span class="dot"></span><span>解析完成</span></li>
+            </ol>
+          </div>
+          <div class="layer"><span>基础底图</span><span class="chip base">BASE</span></div>
+          <div class="layer"><span>边界</span><span class="chip boundary">BOUNDARY</span></div>
+          <div class="layer"><span>禁区</span><span class="chip zone">NO-GO</span></div>
+        </aside>
+
+        <section class="panel canvas">
+          <div class="grid"></div>
+          <div class="status">状态：等待导入点云</div>
+          <div id="projectionLayer" class="projection-layer" aria-label="2D 投影底图占位层"></div>
+          <div id="boundaryOverlay" class="boundary-overlay">
+            <svg id="boundarySvg" viewBox="0 0 1000 620" preserveAspectRatio="none">
+              <polygon id="boundaryPolygon" class="boundary-fill" points="" style="display: none"></polygon>
+              <polyline id="boundaryPolyline" class="boundary-line" points="" style="display: none"></polyline>
+              <polygon id="candidatePolygon" class="candidate-fill" points="" style="display: none"></polygon>
+              <circle id="candidateSeedMarker" cx="0" cy="0" r="6" style="display:none; fill:#16a34a; stroke:#ffffff; stroke-width:2"></circle>
+              <g id="boundaryPoints"></g>
+              <g id="noGoZonesLayer"></g>
+              <polyline id="noGoDraftLine" class="nogo-line" points="" style="display: none"></polyline>
+              <g id="noGoDraftPoints"></g>
+              <g id="corridorZonesLayer"></g>
+              <polyline id="corridorDraftLine" class="corridor-line" points="" style="display: none"></polyline>
+              <g id="corridorDraftPoints"></g>
+            </svg>
+          </div>
+          <div class="map-placeholder">
+            <div>
+              <h2>地图画布占位区</h2>
+              <p>导入点云后将在这里显示 2D 投影底图。</p>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+    <input id="fileInput" type="file" accept=".ply,.pcd,.las,.laz,.xyz,.txt" hidden />
+    <script>
+      const importBtn = document.getElementById("importBtn");
+      const boundaryToolBtn = document.getElementById("boundaryToolBtn");
+      const noGoToolBtn = document.getElementById("noGoToolBtn");
+      const corridorToolBtn = document.getElementById("corridorToolBtn");
+      const closeBoundaryBtn = document.getElementById("closeBoundaryBtn");
+      const resetBoundaryBtn = document.getElementById("resetBoundaryBtn");
+      const undoStepBtn = document.getElementById("undoStepBtn");
+      const acceptCandidateBtn = document.getElementById("acceptCandidateBtn");
+      const seedCandidateBtn = document.getElementById("seedCandidateBtn");
+      const fileInput = document.getElementById("fileInput");
+      const statusEl = document.querySelector(".status");
+      const fileNameEl = document.getElementById("fileName");
+      const fileSizeEl = document.getElementById("fileSize");
+      const fileTypeEl = document.getElementById("fileType");
+      const pointCountEl = document.getElementById("pointCount");
+      const rangeXEl = document.getElementById("rangeX");
+      const rangeYEl = document.getElementById("rangeY");
+      const rangeZEl = document.getElementById("rangeZ");
+      const sampleCountEl = document.getElementById("sampleCount");
+      const groundSampleCountEl = document.getElementById("groundSampleCount");
+      const taskSummaryEl = document.getElementById("taskSummary");
+      const taskBadgeEl = document.getElementById("taskBadge");
+      const stepListEl = document.getElementById("stepList");
+      const projectionLayerEl = document.getElementById("projectionLayer");
+      const mapPlaceholderEl = document.querySelector(".map-placeholder");
+      const boundaryOverlayEl = document.getElementById("boundaryOverlay");
+      const boundaryPolylineEl = document.getElementById("boundaryPolyline");
+      const boundaryPolygonEl = document.getElementById("boundaryPolygon");
+      const candidatePolygonEl = document.getElementById("candidatePolygon");
+      const candidateSeedMarkerEl = document.getElementById("candidateSeedMarker");
+      const boundaryPointsEl = document.getElementById("boundaryPoints");
+      const noGoZonesLayerEl = document.getElementById("noGoZonesLayer");
+      const noGoDraftLineEl = document.getElementById("noGoDraftLine");
+      const noGoDraftPointsEl = document.getElementById("noGoDraftPoints");
+      const corridorZonesLayerEl = document.getElementById("corridorZonesLayer");
+      const corridorDraftLineEl = document.getElementById("corridorDraftLine");
+      const corridorDraftPointsEl = document.getElementById("corridorDraftPoints");
+      const supportedTypes = {
+        ply: "PLY 点云",
+        pcd: "PCD 点云",
+        las: "LAS 点云",
+        laz: "LAZ 点云",
+        xyz: "XYZ 点云",
+        txt: "TXT 点云"
+      };
+      const largeFileThresholdBytes = 200 * 1024 * 1024;
+      const parserReadyTypes = new Set(["ply", "xyz", "txt", "las"]);
+      const projectionSampleLimit = 12000;
+      let mockParseTimer = null;
+      let activeTool = "";
+      let boundaryDraftPoints = [];
+      let boundaryClosedShape = null;
+      let candidateBoundaryPoints = [];
+      let candidateSeedPoint = null;
+      let projectionModel = null;
+      let guideSeedMode = false;
+      let noGoZones = [];
+      let noGoDraftPoints = [];
+      let corridorZones = [];
+      let corridorDraftPoints = [];
+      let dragPointIndex = -1;
+      let isDraggingPoint = false;
+      let dragMode = "";
+      let dragZoneIndex = -1;
+
+      function formatSize(bytes) {
+        if (!Number.isFinite(bytes) || bytes < 0) return "-";
+        if (bytes < 1024) return bytes + " B";
+        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
+        if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+        return (bytes / (1024 * 1024 * 1024)).toFixed(1) + " GB";
+      }
+
+      importBtn.addEventListener("click", () => {
+        fileInput.click();
+      });
+
+      function detectExt(filename) {
+        const idx = filename.lastIndexOf(".");
+        if (idx < 0) return "";
+        return filename.slice(idx + 1).toLowerCase();
+      }
+
+      function setBadge(label, cls) {
+        taskBadgeEl.textContent = label;
+        taskBadgeEl.className = "task-badge" + (cls ? " " + cls : "");
+      }
+
+      function setPointCloudStatsEmpty() {
+        pointCountEl.textContent = "-";
+        rangeXEl.textContent = "-";
+        rangeYEl.textContent = "-";
+        rangeZEl.textContent = "-";
+        sampleCountEl.textContent = "-";
+        groundSampleCountEl.textContent = "-";
+      }
+
+      function formatRange(min, max) {
+        if (!Number.isFinite(min) || !Number.isFinite(max)) return "-";
+        return min.toFixed(2) + " ~ " + max.toFixed(2);
+      }
+
+      function updatePointCloudStats(stats) {
+        pointCountEl.textContent = String(stats.totalPoints);
+        rangeXEl.textContent = formatRange(stats.minX, stats.maxX);
+        rangeYEl.textContent = formatRange(stats.minY, stats.maxY);
+        rangeZEl.textContent = formatRange(stats.minZ, stats.maxZ);
+        sampleCountEl.textContent = String(stats.sampledPoints);
+        groundSampleCountEl.textContent = String(stats.groundSampledPoints || 0);
+      }
+
+      function readFileText(file) {
+        return new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result || ""));
+          reader.onerror = () => reject(new Error("read_failed"));
+          reader.readAsText(file);
+        });
+      }
+
+      function readFileArrayBuffer(file) {
+        return new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = () => reject(new Error("read_failed"));
+          reader.readAsArrayBuffer(file);
+        });
+      }
+
+      function samplePoints(points, limit) {
+        if (points.length <= limit) return points.slice();
+        const step = points.length / limit;
+        const sampled = [];
+        for (let i = 0; i < limit; i += 1) {
+          sampled.push(points[Math.floor(i * step)]);
+        }
+        return sampled;
+      }
+
+      function quantileSorted(values, ratio) {
+        if (values.length === 0) return Infinity;
+        if (values.length === 1) return values[0];
+        const index = Math.max(0, Math.min(values.length - 1, Math.floor((values.length - 1) * ratio)));
+        return values[index];
+      }
+
+      function medianFiniteNeighbors(grid, row, col, radius) {
+        const values = [];
+        for (let dr = -radius; dr <= radius; dr += 1) {
+          for (let dc = -radius; dc <= radius; dc += 1) {
+            const nr = row + dr;
+            const nc = col + dc;
+            if (nr < 0 || nr >= grid.length || nc < 0 || nc >= grid[0].length) continue;
+            const value = grid[nr][nc];
+            if (Number.isFinite(value)) values.push(value);
+          }
+        }
+        if (values.length === 0) return Infinity;
+        values.sort((a, b) => a - b);
+        return values[Math.floor(values.length / 2)];
+      }
+
+      function smoothDensityGrid(density) {
+        const rows = density.length;
+        const cols = density[0].length;
+        const score = Array.from({ length: rows }, () => Array(cols).fill(0));
+        for (let row = 0; row < rows; row += 1) {
+          for (let col = 0; col < cols; col += 1) {
+            let total = 0;
+            for (let dr = -1; dr <= 1; dr += 1) {
+              for (let dc = -1; dc <= 1; dc += 1) {
+                const nr = row + dr;
+                const nc = col + dc;
+                if (nr < 0 || nr >= rows || nc < 0 || nc >= cols) continue;
+                const weight = dr === 0 && dc === 0 ? 1 : (Math.abs(dr) + Math.abs(dc) === 1 ? 0.65 : 0.4);
+                total += density[nr][nc] * weight;
+              }
+            }
+            score[row][col] = total;
+          }
+        }
+        return score;
+      }
+
+      function attachGroundLayer(stats) {
+        const gridCols = 72;
+        const gridRows = 48;
+        const spanX = Math.max(stats.maxX - stats.minX, 1e-6);
+        const spanY = Math.max(stats.maxY - stats.minY, 1e-6);
+        const spanZ = Math.max(stats.maxZ - stats.minZ, 1e-6);
+        const cellZValues = Array.from({ length: gridRows }, () => Array.from({ length: gridCols }, () => []));
+
+        for (const p of stats.sampled) {
+          const col = Math.max(0, Math.min(gridCols - 1, Math.floor(((p.x - stats.minX) / spanX) * gridCols)));
+          const row = Math.max(0, Math.min(gridRows - 1, Math.floor(((p.y - stats.minY) / spanY) * gridRows)));
+          cellZValues[row][col].push(p.z);
+        }
+
+        const coarseBase = Array.from({ length: gridRows }, () => Array(gridCols).fill(Infinity));
+        for (let row = 0; row < gridRows; row += 1) {
+          for (let col = 0; col < gridCols; col += 1) {
+            const zValues = cellZValues[row][col];
+            if (zValues.length === 0) continue;
+            zValues.sort((a, b) => a - b);
+            coarseBase[row][col] = quantileSorted(zValues, zValues.length >= 4 ? 0.25 : 0);
+          }
+        }
+
+        const smoothedBase = Array.from({ length: gridRows }, () => Array(gridCols).fill(Infinity));
+        for (let row = 0; row < gridRows; row += 1) {
+          for (let col = 0; col < gridCols; col += 1) {
+            const localMedian = medianFiniteNeighbors(coarseBase, row, col, 2);
+            if (Number.isFinite(localMedian)) smoothedBase[row][col] = localMedian;
+          }
+        }
+
+        const groundTolerance = Math.max(0.4, Math.min(1.8, spanZ * 0.04));
+        const lowerTolerance = Math.max(0.25, Math.min(0.8, spanZ * 0.015));
+        const preliminaryGround = [];
+        const groundCellCounts = Array.from({ length: gridRows }, () => Array(gridCols).fill(0));
+        for (const p of stats.sampled) {
+          const col = Math.max(0, Math.min(gridCols - 1, Math.floor(((p.x - stats.minX) / spanX) * gridCols)));
+          const row = Math.max(0, Math.min(gridRows - 1, Math.floor(((p.y - stats.minY) / spanY) * gridRows)));
+          const baseZ = smoothedBase[row][col];
+          if (Number.isFinite(baseZ) && p.z >= baseZ - lowerTolerance && p.z <= baseZ + groundTolerance) {
+            preliminaryGround.push({ point: p, row, col, baseZ });
+            groundCellCounts[row][col] += 1;
+          }
+        }
+
+        const groundSampled = [];
+        for (const entry of preliminaryGround) {
+          const { point, row, col, baseZ } = entry;
+          let occupiedNeighbors = 0;
+          for (let dr = -1; dr <= 1; dr += 1) {
+            for (let dc = -1; dc <= 1; dc += 1) {
+              const nr = row + dr;
+              const nc = col + dc;
+              if (nr < 0 || nr >= gridRows || nc < 0 || nc >= gridCols) continue;
+              if (groundCellCounts[nr][nc] > 0) occupiedNeighbors += 1;
+            }
+          }
+          const closeToBase = point.z <= baseZ + groundTolerance * 0.35;
+          if (groundCellCounts[row][col] >= 2 || occupiedNeighbors >= 3 || closeToBase) {
+            groundSampled.push(point);
+          }
+        }
+
+        return {
+          ...stats,
+          groundSampled,
+          groundSampledPoints: groundSampled.length,
+          groundTolerance,
+          groundBaseGrid: smoothedBase
+        };
+      }
+
+      function convexHull(points) {
+        if (points.length <= 1) return points.slice();
+        const sorted = points
+          .map((p) => ({ x: p.x, y: p.y }))
+          .sort((a, b) => (a.x === b.x ? a.y - b.y : a.x - b.x));
+
+        const cross = (o, a, b) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+        const lower = [];
+        for (const p of sorted) {
+          while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) {
+            lower.pop();
+          }
+          lower.push(p);
+        }
+        const upper = [];
+        for (let i = sorted.length - 1; i >= 0; i -= 1) {
+          const p = sorted[i];
+          while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) {
+            upper.pop();
+          }
+          upper.push(p);
+        }
+        lower.pop();
+        upper.pop();
+        return lower.concat(upper);
+      }
+
+      function simplifyPolygon(points, targetCount) {
+        if (points.length <= targetCount) return points.slice();
+        const step = points.length / targetCount;
+        const result = [];
+        for (let i = 0; i < targetCount; i += 1) {
+          result.push(points[Math.floor(i * step)]);
+        }
+        return result;
+      }
+
+      function renderCandidateBoundary() {
+        if (candidateBoundaryPoints.length >= 3) {
+          candidatePolygonEl.setAttribute("points", toPointString(candidateBoundaryPoints));
+          candidatePolygonEl.style.display = "block";
+        } else {
+          candidatePolygonEl.setAttribute("points", "");
+          candidatePolygonEl.style.display = "none";
+        }
+
+        if (candidateSeedPoint) {
+          candidateSeedMarkerEl.setAttribute("cx", candidateSeedPoint.x.toFixed(1));
+          candidateSeedMarkerEl.setAttribute("cy", candidateSeedPoint.y.toFixed(1));
+          candidateSeedMarkerEl.style.display = "block";
+        } else {
+          candidateSeedMarkerEl.style.display = "none";
+        }
+      }
+
+      function resetCandidateBoundary() {
+        candidateBoundaryPoints = [];
+        candidateSeedPoint = null;
+        guideSeedMode = false;
+        projectionModel = null;
+        renderCandidateBoundary();
+      }
+
+      function buildCandidateBoundary(stats, seedPoint) {
+        const canvasWidth = 1000;
+        const canvasHeight = 620;
+        const spanX = Math.max(stats.maxX - stats.minX, 1e-6);
+        const spanY = Math.max(stats.maxY - stats.minY, 1e-6);
+        const pad = 20;
+        const scaleX = (canvasWidth - pad * 2) / spanX;
+        const scaleY = (canvasHeight - pad * 2) / spanY;
+        const scale = Math.min(scaleX, scaleY);
+        const offsetX = (canvasWidth - spanX * scale) / 2;
+        const offsetY = (canvasHeight - spanY * scale) / 2;
+        const gridCols = 42;
+        const gridRows = 26;
+        const density = Array.from({ length: gridRows }, () => Array(gridCols).fill(0));
+
+        const sourcePoints = stats.groundSampled && stats.groundSampled.length >= 3 ? stats.groundSampled : stats.sampled;
+        for (const p of sourcePoints) {
+          const px = offsetX + (p.x - stats.minX) * scale;
+          const py = canvasHeight - (offsetY + (p.y - stats.minY) * scale);
+          const col = Math.max(0, Math.min(gridCols - 1, Math.floor((px / canvasWidth) * gridCols)));
+          const row = Math.max(0, Math.min(gridRows - 1, Math.floor((py / canvasHeight) * gridRows)));
+          density[row][col] += 1;
+        }
+
+        const score = smoothDensityGrid(density);
+        let maxCell = 0;
+        for (const row of score) {
+          for (const count of row) {
+            if (count > maxCell) maxCell = count;
+          }
+        }
+        const threshold = Math.max(0.9, maxCell * 0.24);
+        const thresholdGrow = Math.max(0.55, maxCell * 0.14);
+        let activeCells = [];
+
+        if (seedPoint) {
+          const seedCol = Math.max(0, Math.min(gridCols - 1, Math.floor((seedPoint.x / canvasWidth) * gridCols)));
+          const seedRow = Math.max(0, Math.min(gridRows - 1, Math.floor((seedPoint.y / canvasHeight) * gridRows)));
+          const visited = Array.from({ length: gridRows }, () => Array(gridCols).fill(false));
+          const queue = [[seedRow, seedCol]];
+          visited[seedRow][seedCol] = true;
+          while (queue.length > 0) {
+            const [row, col] = queue.shift();
+            const val = score[row][col];
+            if (val >= thresholdGrow) {
+              activeCells.push([row, col]);
+              const dirs = [[1,0],[-1,0],[0,1],[0,-1]];
+              for (const [dr, dc] of dirs) {
+                const nr = row + dr;
+                const nc = col + dc;
+                if (nr < 0 || nr >= gridRows || nc < 0 || nc >= gridCols) continue;
+                if (visited[nr][nc]) continue;
+                visited[nr][nc] = true;
+                if (score[nr][nc] >= thresholdGrow) queue.push([nr, nc]);
+              }
+            }
+          }
+          if (activeCells.length < 6) activeCells = [];
+        }
+
+        if (activeCells.length === 0) {
+          for (let row = 0; row < gridRows; row += 1) {
+            for (let col = 0; col < gridCols; col += 1) {
+              if (score[row][col] >= threshold) {
+                activeCells.push([row, col]);
+              }
+            }
+          }
+        }
+
+        const activePoints = [];
+        for (const [row, col] of activeCells) {
+          activePoints.push({
+            x: ((col + 0.5) / gridCols) * canvasWidth,
+            y: ((row + 0.5) / gridRows) * canvasHeight
+          });
+        }
+
+        projectionModel = {
+          density: score,
+          gridCols,
+          gridRows,
+          maxCell,
+          threshold,
+          thresholdGrow
+        };
+        if (activePoints.length < 3) return [];
+        return simplifyPolygon(convexHull(activePoints), 12);
+      }
+
+      function parseDelimitedPointCloud(text) {
+        const points = [];
+        const lines = text.split(/\r?\n/);
+        for (const rawLine of lines) {
+          const line = rawLine.trim();
+          if (!line || line.startsWith("#")) continue;
+          const parts = line.split(/[\s,]+/);
+          if (parts.length < 3) continue;
+          const x = Number(parts[0]);
+          const y = Number(parts[1]);
+          const z = Number(parts[2]);
+          if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) continue;
+          points.push({ x, y, z });
+        }
+        return points;
+      }
+
+      function parseAsciiPly(text) {
+        const lines = text.split(/\r?\n/);
+        let vertexCount = -1;
+        let headerEnd = -1;
+
+        for (let i = 0; i < lines.length; i += 1) {
+          const line = lines[i].trim();
+          if (line.startsWith("format") && !line.includes("ascii")) {
+            throw new Error("ply_binary_not_supported");
+          }
+          if (line.startsWith("element vertex")) {
+            const parts = line.split(/\s+/);
+            vertexCount = Number(parts[2]);
+          }
+          if (line === "end_header") {
+            headerEnd = i;
+            break;
+          }
+        }
+
+        if (headerEnd < 0 || vertexCount < 0) {
+          throw new Error("ply_header_invalid");
+        }
+
+        const points = [];
+        for (let i = headerEnd + 1; i < lines.length && points.length < vertexCount; i += 1) {
+          const line = lines[i].trim();
+          if (!line) continue;
+          const parts = line.split(/\s+/);
+          if (parts.length < 3) continue;
+          const x = Number(parts[0]);
+          const y = Number(parts[1]);
+          const z = Number(parts[2]);
+          if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) continue;
+          points.push({ x, y, z });
+        }
+        return points;
+      }
+
+      function parseLasArrayBuffer(buffer) {
+        const view = new DataView(buffer);
+        const signature =
+          String.fromCharCode(view.getUint8(0)) +
+          String.fromCharCode(view.getUint8(1)) +
+          String.fromCharCode(view.getUint8(2)) +
+          String.fromCharCode(view.getUint8(3));
+
+        if (signature !== "LASF") {
+          throw new Error("las_signature_invalid");
+        }
+
+        const versionMajor = view.getUint8(24);
+        const versionMinor = view.getUint8(25);
+        const headerSize = view.getUint16(94, true);
+        const pointDataOffset = view.getUint32(96, true);
+        const pointFormat = view.getUint8(104) & 0x3f;
+        const pointRecordLength = view.getUint16(105, true);
+        let pointCount = view.getUint32(107, true);
+
+        if (versionMajor === 1 && versionMinor >= 4) {
+          const extendedPointCount = Number(view.getBigUint64(247, true));
+          if (extendedPointCount > 0) pointCount = extendedPointCount;
+        }
+
+        const scaleX = view.getFloat64(131, true);
+        const scaleY = view.getFloat64(139, true);
+        const scaleZ = view.getFloat64(147, true);
+        const offsetX = view.getFloat64(155, true);
+        const offsetY = view.getFloat64(163, true);
+        const offsetZ = view.getFloat64(171, true);
+
+        if (pointRecordLength < 12) {
+          throw new Error("las_point_record_invalid");
+        }
+        if (pointDataOffset + pointRecordLength > buffer.byteLength) {
+          throw new Error("las_point_data_out_of_range");
+        }
+        if (pointFormat > 10) {
+          throw new Error("las_point_format_unsupported");
+        }
+
+        const sampledTarget = Math.min(pointCount, projectionSampleLimit);
+        const sampleStep = Math.max(1, Math.floor(pointCount / Math.max(sampledTarget, 1)));
+        const sampled = [];
+        let minX = Infinity;
+        let minY = Infinity;
+        let minZ = Infinity;
+        let maxX = -Infinity;
+        let maxY = -Infinity;
+        let maxZ = -Infinity;
+
+        for (let i = 0; i < pointCount; i += 1) {
+          const base = pointDataOffset + i * pointRecordLength;
+          if (base + 12 > buffer.byteLength) break;
+
+          const rawX = view.getInt32(base, true);
+          const rawY = view.getInt32(base + 4, true);
+          const rawZ = view.getInt32(base + 8, true);
+          const x = rawX * scaleX + offsetX;
+          const y = rawY * scaleY + offsetY;
+          const z = rawZ * scaleZ + offsetZ;
+
+          if (x < minX) minX = x;
+          if (x > maxX) maxX = x;
+          if (y < minY) minY = y;
+          if (y > maxY) maxY = y;
+          if (z < minZ) minZ = z;
+          if (z > maxZ) maxZ = z;
+
+          if (sampled.length < sampledTarget && (i % sampleStep === 0 || i === pointCount - 1)) {
+            sampled.push({ x, y, z });
+          }
+        }
+
+        if (!Number.isFinite(minX) || sampled.length === 0) {
+          throw new Error("no_points_found");
+        }
+
+        return attachGroundLayer({
+          totalPoints: pointCount,
+          sampledPoints: sampled.length,
+          minX,
+          maxX,
+          minY,
+          maxY,
+          minZ,
+          maxZ,
+          sampled
+        });
+      }
+
+      function parsePointCloudText(text, ext) {
+        if (ext === "ply") return parseAsciiPly(text);
+        if (ext === "xyz" || ext === "txt") return parseDelimitedPointCloud(text);
+        throw new Error("parser_not_supported");
+      }
+
+      function buildPointStats(points) {
+        if (points.length === 0) {
+          throw new Error("no_points_found");
+        }
+        let minX = Infinity;
+        let minY = Infinity;
+        let minZ = Infinity;
+        let maxX = -Infinity;
+        let maxY = -Infinity;
+        let maxZ = -Infinity;
+
+        for (const p of points) {
+          if (p.x < minX) minX = p.x;
+          if (p.x > maxX) maxX = p.x;
+          if (p.y < minY) minY = p.y;
+          if (p.y > maxY) maxY = p.y;
+          if (p.z < minZ) minZ = p.z;
+          if (p.z > maxZ) maxZ = p.z;
+        }
+
+        const sampled = samplePoints(points, projectionSampleLimit);
+        return attachGroundLayer({
+          totalPoints: points.length,
+          sampledPoints: sampled.length,
+          minX,
+          maxX,
+          minY,
+          maxY,
+          minZ,
+          maxZ,
+          sampled
+        });
+      }
+
+      function renderProjectionFromPoints(stats) {
+        const canvas = document.createElement("canvas");
+        canvas.width = 1000;
+        canvas.height = 620;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) throw new Error("canvas_unavailable");
+
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = "#ece7dd";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        const spanX = Math.max(stats.maxX - stats.minX, 1e-6);
+        const spanY = Math.max(stats.maxY - stats.minY, 1e-6);
+        const pad = 20;
+        const scaleX = (canvas.width - pad * 2) / spanX;
+        const scaleY = (canvas.height - pad * 2) / spanY;
+        const scale = Math.min(scaleX, scaleY);
+        const offsetX = (canvas.width - spanX * scale) / 2;
+        const offsetY = (canvas.height - spanY * scale) / 2;
+
+        const gridCols = 120;
+        const gridRows = 74;
+        const density = Array.from({ length: gridRows }, () => Array(gridCols).fill(0));
+        const sourcePoints = stats.groundSampled && stats.groundSampled.length >= 3 ? stats.groundSampled : stats.sampled;
+        for (const p of sourcePoints) {
+          const x = offsetX + (p.x - stats.minX) * scale;
+          const y = canvas.height - (offsetY + (p.y - stats.minY) * scale);
+          const col = Math.max(0, Math.min(gridCols - 1, Math.floor((x / canvas.width) * gridCols)));
+          const row = Math.max(0, Math.min(gridRows - 1, Math.floor((y / canvas.height) * gridRows)));
+          density[row][col] += 1;
+        }
+
+        let maxCell = 0;
+        for (const row of density) {
+          for (const count of row) {
+            if (count > maxCell) maxCell = count;
+          }
+        }
+
+        const cellWidth = canvas.width / gridCols;
+        const cellHeight = canvas.height / gridRows;
+        for (let row = 0; row < gridRows; row += 1) {
+          for (let col = 0; col < gridCols; col += 1) {
+            const count = density[row][col];
+            if (count <= 0) continue;
+            const ratio = Math.min(1, count / Math.max(maxCell, 1));
+            const zBias = 0.08 + ratio * 0.52;
+            const lightness = 76 - ratio * 26;
+            ctx.fillStyle = "hsla(168, 45%, " + lightness.toFixed(1) + "%, " + zBias.toFixed(3) + ")";
+            ctx.fillRect(col * cellWidth, row * cellHeight, cellWidth + 1, cellHeight + 1);
+          }
+        }
+
+        projectionLayerEl.style.backgroundImage = 'url("' + canvas.toDataURL("image/png") + '")';
+        projectionLayerEl.style.backgroundSize = "cover";
+        projectionLayerEl.style.backgroundPosition = "center";
+        projectionLayerEl.style.display = "block";
+        mapPlaceholderEl.style.display = "none";
+      }
+
+      function setStepState(step, state) {
+        const item = stepListEl.querySelector('[data-step="' + step + '"]');
+        if (!item) return;
+        item.classList.remove("active", "done", "error");
+        if (state) item.classList.add(state);
+      }
+
+      function resetSteps() {
+        ["queued", "parsing", "done"].forEach((step) => setStepState(step, ""));
+      }
+
+      function setActiveTool(tool) {
+        activeTool = tool;
+        boundaryToolBtn.classList.toggle("active-tool", tool === "boundary");
+        noGoToolBtn.classList.toggle("active-tool", tool === "nogo");
+        corridorToolBtn.classList.toggle("active-tool", tool === "corridor");
+      }
+
+      function toPointString(points) {
+        return points.map((p) => p.x.toFixed(1) + "," + p.y.toFixed(1)).join(" ");
+      }
+
+      function renderBoundary() {
+        const closedText = toPointString(boundaryClosedShape || []);
+        const draftText = toPointString(boundaryDraftPoints);
+        boundaryPolygonEl.setAttribute("points", closedText);
+        boundaryPolylineEl.setAttribute("points", draftText);
+
+        if (boundaryClosedShape && boundaryClosedShape.length >= 3) {
+          boundaryPolygonEl.style.display = "block";
+        } else {
+          boundaryPolygonEl.style.display = "none";
+        }
+
+        if (boundaryDraftPoints.length >= 2) {
+          boundaryPolylineEl.style.display = "block";
+        } else {
+          boundaryPolylineEl.style.display = "none";
+        }
+
+        boundaryPointsEl.innerHTML = "";
+        const editablePoints = boundaryDraftPoints.length > 0 ? boundaryDraftPoints : (boundaryClosedShape || []);
+        editablePoints.forEach((p, idx) => {
+          const c = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+          c.setAttribute("cx", p.x.toFixed(1));
+          c.setAttribute("cy", p.y.toFixed(1));
+          c.setAttribute("r", "5");
+          c.setAttribute("class", "boundary-point");
+          c.setAttribute("data-point-index", String(idx));
+          boundaryPointsEl.appendChild(c);
+        });
+      }
+
+      function resetBoundaryDrawing() {
+        boundaryDraftPoints = [];
+        boundaryClosedShape = null;
+        dragPointIndex = -1;
+        isDraggingPoint = false;
+        dragMode = "";
+        dragZoneIndex = -1;
+        renderBoundary();
+      }
+
+      function renderNoGoZones() {
+        noGoZonesLayerEl.innerHTML = "";
+        noGoZones.forEach((zone, zoneIdx) => {
+          const poly = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+          poly.setAttribute("points", toPointString(zone));
+          poly.setAttribute("class", "nogo-fill");
+          noGoZonesLayerEl.appendChild(poly);
+
+          zone.forEach((p, pointIdx) => {
+            const c = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+            c.setAttribute("cx", p.x.toFixed(1));
+            c.setAttribute("cy", p.y.toFixed(1));
+            c.setAttribute("r", "4.5");
+            c.setAttribute("class", "nogo-point");
+            c.setAttribute("data-zone-index", String(zoneIdx));
+            c.setAttribute("data-zone-point-index", String(pointIdx));
+            noGoZonesLayerEl.appendChild(c);
+          });
+        });
+
+        const draftText = toPointString(noGoDraftPoints);
+        noGoDraftLineEl.setAttribute("points", draftText);
+        noGoDraftLineEl.style.display = noGoDraftPoints.length >= 2 ? "block" : "none";
+
+        noGoDraftPointsEl.innerHTML = "";
+        noGoDraftPoints.forEach((p) => {
+          const c = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+          c.setAttribute("cx", p.x.toFixed(1));
+          c.setAttribute("cy", p.y.toFixed(1));
+          c.setAttribute("r", "4.5");
+          c.setAttribute("class", "nogo-point");
+          noGoDraftPointsEl.appendChild(c);
+        });
+      }
+
+      function resetNoGoDrawing(clearZones) {
+        noGoDraftPoints = [];
+        if (clearZones) noGoZones = [];
+        renderNoGoZones();
+      }
+
+      function renderCorridorZones() {
+        corridorZonesLayerEl.innerHTML = "";
+        corridorZones.forEach((zone, zoneIdx) => {
+          const poly = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+          poly.setAttribute("points", toPointString(zone));
+          poly.setAttribute("class", "corridor-fill");
+          corridorZonesLayerEl.appendChild(poly);
+
+          zone.forEach((p, pointIdx) => {
+            const c = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+            c.setAttribute("cx", p.x.toFixed(1));
+            c.setAttribute("cy", p.y.toFixed(1));
+            c.setAttribute("r", "4.5");
+            c.setAttribute("class", "corridor-point");
+            c.setAttribute("data-corridor-index", String(zoneIdx));
+            c.setAttribute("data-corridor-point-index", String(pointIdx));
+            corridorZonesLayerEl.appendChild(c);
+          });
+        });
+
+        const draftText = toPointString(corridorDraftPoints);
+        corridorDraftLineEl.setAttribute("points", draftText);
+        corridorDraftLineEl.style.display = corridorDraftPoints.length >= 2 ? "block" : "none";
+
+        corridorDraftPointsEl.innerHTML = "";
+        corridorDraftPoints.forEach((p) => {
+          const c = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+          c.setAttribute("cx", p.x.toFixed(1));
+          c.setAttribute("cy", p.y.toFixed(1));
+          c.setAttribute("r", "4.5");
+          c.setAttribute("class", "corridor-point");
+          corridorDraftPointsEl.appendChild(c);
+        });
+      }
+
+      function resetCorridorDrawing(clearZones) {
+        corridorDraftPoints = [];
+        if (clearZones) corridorZones = [];
+        renderCorridorZones();
+      }
+
+      function closeBoundary() {
+        if (activeTool !== "boundary") {
+          statusEl.textContent = "状态：请先启用边界工具";
+          return;
+        }
+        if (projectionLayerEl.style.display !== "block") {
+          statusEl.textContent = "状态：请先导入并完成点云解析";
+          return;
+        }
+        if (boundaryDraftPoints.length < 3) {
+          statusEl.textContent = "状态：至少需要 3 个点才能闭合边界";
+          return;
+        }
+        boundaryClosedShape = boundaryDraftPoints.slice();
+        boundaryDraftPoints = [];
+        renderBoundary();
+        statusEl.textContent = "状态：边界已闭合";
+      }
+
+      function closeNoGoDraft() {
+        if (activeTool !== "nogo") {
+          statusEl.textContent = "状态：请先启用禁区工具";
+          return;
+        }
+        if (projectionLayerEl.style.display !== "block") {
+          statusEl.textContent = "状态：请先导入并完成点云解析";
+          return;
+        }
+        if (noGoDraftPoints.length < 3) {
+          statusEl.textContent = "状态：禁区至少需要 3 个点";
+          return;
+        }
+        noGoZones.push(noGoDraftPoints.slice());
+        noGoDraftPoints = [];
+        renderNoGoZones();
+        statusEl.textContent = "状态：禁区已闭合（总数 " + noGoZones.length + "）";
+      }
+
+      function closeCorridorDraft() {
+        if (activeTool !== "corridor") {
+          statusEl.textContent = "状态：请先启用过道工具";
+          return;
+        }
+        if (projectionLayerEl.style.display !== "block") {
+          statusEl.textContent = "状态：请先导入并完成点云解析";
+          return;
+        }
+        if (corridorDraftPoints.length < 3) {
+          statusEl.textContent = "状态：过道至少需要 3 个点";
+          return;
+        }
+        corridorZones.push(corridorDraftPoints.slice());
+        corridorDraftPoints = [];
+        renderCorridorZones();
+        statusEl.textContent = "状态：过道已闭合（总数 " + corridorZones.length + "）";
+      }
+
+      function undoOneStep() {
+        if (activeTool === "boundary") {
+          if (boundaryDraftPoints.length > 0) {
+            boundaryDraftPoints.pop();
+            renderBoundary();
+            statusEl.textContent = "状态：已撤销最后一个边界草稿点";
+            return;
+          }
+          if (boundaryClosedShape && boundaryClosedShape.length > 0) {
+            boundaryDraftPoints = boundaryClosedShape.slice();
+            boundaryClosedShape = null;
+            renderBoundary();
+            statusEl.textContent = "状态：已撤销边界闭合，已回到草稿";
+            return;
+          }
+          statusEl.textContent = "状态：没有可撤销的边界操作";
+          return;
+        }
+
+        if (activeTool === "nogo") {
+          if (noGoDraftPoints.length > 0) {
+            noGoDraftPoints.pop();
+            renderNoGoZones();
+            statusEl.textContent = "状态：已撤销最后一个禁区草稿点";
+            return;
+          }
+          if (noGoZones.length > 0) {
+            noGoDraftPoints = noGoZones.pop() || [];
+            renderNoGoZones();
+            statusEl.textContent = "状态：已撤销禁区闭合，已回到草稿";
+            return;
+          }
+          statusEl.textContent = "状态：没有可撤销的禁区操作";
+          return;
+        }
+
+        if (activeTool === "corridor") {
+          if (corridorDraftPoints.length > 0) {
+            corridorDraftPoints.pop();
+            renderCorridorZones();
+            statusEl.textContent = "状态：已撤销最后一个过道草稿点";
+            return;
+          }
+          if (corridorZones.length > 0) {
+            corridorDraftPoints = corridorZones.pop() || [];
+            renderCorridorZones();
+            statusEl.textContent = "状态：已撤销过道闭合，已回到草稿";
+            return;
+          }
+          statusEl.textContent = "状态：没有可撤销的过道操作";
+          return;
+        }
+
+        statusEl.textContent = "状态：请先选择边界工具/禁区工具/过道工具";
+      }
+
+      function beginMockParseFlow() {
+        if (mockParseTimer) {
+          clearTimeout(mockParseTimer);
+          mockParseTimer = null;
+        }
+        resetSteps();
+        resetBoundaryDrawing();
+        resetNoGoDrawing(true);
+        resetCorridorDrawing(true);
+        setBadge("运行中", "running");
+        taskSummaryEl.textContent = "任务已创建，等待解析";
+        setStepState("queued", "active");
+        statusEl.textContent = "状态：任务排队中";
+        projectionLayerEl.style.display = "none";
+        mapPlaceholderEl.style.display = "grid";
+
+        mockParseTimer = setTimeout(() => {
+          setStepState("queued", "done");
+          setStepState("parsing", "active");
+          taskSummaryEl.textContent = "正在解析点云（占位流程）";
+          statusEl.textContent = "状态：解析中（占位流程）";
+
+          mockParseTimer = setTimeout(() => {
+            setStepState("parsing", "done");
+            setStepState("done", "done");
+            setBadge("完成", "success");
+            taskSummaryEl.textContent = "解析流程已完成（待接真实解析器）";
+            statusEl.textContent = "状态：解析完成（占位流程）";
+            projectionLayerEl.style.display = "block";
+            mapPlaceholderEl.style.display = "none";
+            setActiveTool("boundary");
+            mockParseTimer = null;
+          }, 1200);
+        }, 800);
+      }
+
+      async function beginRealParseFlow(file, ext) {
+        if (mockParseTimer) {
+          clearTimeout(mockParseTimer);
+          mockParseTimer = null;
+        }
+
+        resetSteps();
+        resetBoundaryDrawing();
+        resetNoGoDrawing(true);
+        resetCorridorDrawing(true);
+        resetCandidateBoundary();
+        setPointCloudStatsEmpty();
+        setBadge("运行中", "running");
+        taskSummaryEl.textContent = "任务已创建，等待解析";
+        setStepState("queued", "active");
+        statusEl.textContent = "状态：任务排队中";
+        projectionLayerEl.style.display = "none";
+        projectionLayerEl.style.backgroundImage = "";
+        mapPlaceholderEl.style.display = "grid";
+
+        await new Promise((resolve) => {
+          window.setTimeout(resolve, 120);
+        });
+
+        setStepState("queued", "done");
+        setStepState("parsing", "active");
+        taskSummaryEl.textContent = "正在读取点云、提取地面层并生成 2D 投影";
+        statusEl.textContent = "状态：解析中（真实点云 + 地面层）";
+
+        try {
+          if (!parserReadyTypes.has(ext)) {
+            throw new Error("format_recognized_but_not_ready");
+          }
+          let stats;
+          if (ext === "las") {
+            const buffer = await readFileArrayBuffer(file);
+            stats = parseLasArrayBuffer(buffer);
+          } else {
+            const text = await readFileText(file);
+            const points = parsePointCloudText(text, ext);
+            stats = buildPointStats(points);
+          }
+          updatePointCloudStats(stats);
+          renderProjectionFromPoints(stats);
+          candidateBoundaryPoints = buildCandidateBoundary(stats, null);
+          renderCandidateBoundary();
+
+          setStepState("parsing", "done");
+          setStepState("done", "done");
+          setBadge("完成", "success");
+          taskSummaryEl.textContent = candidateBoundaryPoints.length >= 3
+            ? "真实点云解析完成，已基于地面层生成候选草坪范围"
+            : "真实点云解析完成，地面层未形成可靠候选范围";
+          statusEl.textContent = candidateBoundaryPoints.length >= 3
+            ? "状态：已基于地面层生成候选范围，可接受或手动微调"
+            : "状态：地面底图已生成，请手动勾画草坪范围";
+          setActiveTool("boundary");
+          return;
+        } catch (error) {
+          resetBoundaryDrawing();
+          resetNoGoDrawing(true);
+          resetCorridorDrawing(true);
+          resetCandidateBoundary();
+          projectionLayerEl.style.display = "none";
+          projectionLayerEl.style.backgroundImage = "";
+          mapPlaceholderEl.style.display = "grid";
+          setStepState("parsing", "error");
+          setBadge("失败", "error");
+
+          if (error instanceof Error && error.message === "format_recognized_but_not_ready") {
+            taskSummaryEl.textContent = "格式已识别，但真实解析器尚未接入";
+            statusEl.textContent = "状态：当前仅支持小型 ASCII PLY/XYZ/TXT 真实解析";
+            return;
+          }
+          if (error instanceof Error && error.message === "ply_binary_not_supported") {
+            taskSummaryEl.textContent = "当前仅支持 ASCII PLY";
+            statusEl.textContent = "状态：该 PLY 不是 ASCII 文本格式";
+            return;
+          }
+          if (error instanceof Error && error.message === "las_signature_invalid") {
+            taskSummaryEl.textContent = "LAS 文件头无效";
+            statusEl.textContent = "状态：这不是可识别的 LAS 文件";
+            return;
+          }
+          if (error instanceof Error && error.message === "las_point_format_unsupported") {
+            taskSummaryEl.textContent = "LAS 点格式暂不支持";
+            statusEl.textContent = "状态：当前 LAS 点记录格式超出已接入范围";
+            return;
+          }
+          if (error instanceof Error && error.message === "no_points_found") {
+            taskSummaryEl.textContent = "未找到可用点坐标";
+            statusEl.textContent = "状态：文件中没有解析出有效的 XYZ 点";
+            return;
+          }
+
+          taskSummaryEl.textContent = "点云解析失败";
+          statusEl.textContent = "状态：点云解析失败，请检查文件格式";
+        }
+      }
+
+      function getOverlayPoint(evt) {
+        const rect = boundaryOverlayEl.getBoundingClientRect();
+        if (rect.width === 0 || rect.height === 0) return null;
+        const x = ((evt.clientX - rect.left) / rect.width) * 1000;
+        const y = ((evt.clientY - rect.top) / rect.height) * 620;
+        return {
+          x: Math.max(0, Math.min(1000, x)),
+          y: Math.max(0, Math.min(620, y))
+        };
+      }
+
+      boundaryToolBtn.addEventListener("click", () => {
+        setActiveTool("boundary");
+        if (projectionLayerEl.style.display !== "block") {
+          statusEl.textContent = "状态：请先导入并完成点云解析";
+          return;
+        }
+        if (boundaryClosedShape && boundaryClosedShape.length >= 3) {
+          statusEl.textContent = "状态：边界已闭合，可重新绘制";
+        } else {
+          statusEl.textContent = "状态：边界工具已启用，点击画布添加边界点";
+        }
+      });
+
+      noGoToolBtn.addEventListener("click", () => {
+        setActiveTool("nogo");
+        if (projectionLayerEl.style.display !== "block") {
+          statusEl.textContent = "状态：请先导入并完成点云解析";
+          return;
+        }
+        statusEl.textContent = "状态：禁区工具已启用，点击画布添加禁区点";
+      });
+
+      corridorToolBtn.addEventListener("click", () => {
+        setActiveTool("corridor");
+        if (projectionLayerEl.style.display !== "block") {
+          statusEl.textContent = "状态：请先导入并完成点云解析";
+          return;
+        }
+        statusEl.textContent = "状态：过道工具已启用，点击画布添加过道点";
+      });
+
+      boundaryOverlayEl.addEventListener("click", (evt) => {
+        if (isDraggingPoint) return;
+        if (projectionLayerEl.style.display !== "block") return;
+        const point = getOverlayPoint(evt);
+        if (!point) return;
+        if (guideSeedMode) {
+          candidateSeedPoint = point;
+          candidateBoundaryPoints = buildCandidateBoundaryFromModel(point);
+          renderCandidateBoundary();
+          guideSeedMode = false;
+          statusEl.textContent = candidateBoundaryPoints.length >= 3
+            ? "状态：已按引导点重算候选草坪范围"
+            : "状态：引导点附近未形成可靠候选范围";
+          return;
+        }
+        if (activeTool === "boundary") {
+          boundaryDraftPoints.push(point);
+          renderBoundary();
+          statusEl.textContent = "状态：已添加边界点（" + boundaryDraftPoints.length + "）";
+          return;
+        }
+        if (activeTool === "nogo") {
+          noGoDraftPoints.push(point);
+          renderNoGoZones();
+          statusEl.textContent = "状态：已添加禁区点（" + noGoDraftPoints.length + "）";
+          return;
+        }
+        if (activeTool === "corridor") {
+          corridorDraftPoints.push(point);
+          renderCorridorZones();
+          statusEl.textContent = "状态：已添加过道点（" + corridorDraftPoints.length + "）";
+        }
+      });
+
+      boundaryOverlayEl.addEventListener("dblclick", (evt) => {
+        if (activeTool !== "boundary" && activeTool !== "nogo" && activeTool !== "corridor") return;
+        if (projectionLayerEl.style.display !== "block") return;
+        evt.preventDefault();
+        if (activeTool === "boundary") closeBoundary();
+        if (activeTool === "nogo") closeNoGoDraft();
+        if (activeTool === "corridor") closeCorridorDraft();
+      });
+
+      boundaryPointsEl.addEventListener("mousedown", (evt) => {
+        if (activeTool !== "boundary") return;
+        const editablePoints = boundaryDraftPoints.length > 0 ? boundaryDraftPoints : (boundaryClosedShape || []);
+        if (editablePoints.length === 0) return;
+        const target = evt.target;
+        if (!(target instanceof SVGElement)) return;
+        const idx = Number(target.getAttribute("data-point-index"));
+        if (!Number.isInteger(idx) || idx < 0 || idx >= editablePoints.length) return;
+        evt.preventDefault();
+        isDraggingPoint = true;
+        dragMode = "boundary";
+        dragZoneIndex = -1;
+        dragPointIndex = idx;
+        statusEl.textContent = "状态：正在拖拽边界点";
+      });
+
+      noGoZonesLayerEl.addEventListener("mousedown", (evt) => {
+        if (activeTool !== "nogo") return;
+        const target = evt.target;
+        if (!(target instanceof SVGElement)) return;
+        const zoneIdx = Number(target.getAttribute("data-zone-index"));
+        const pointIdx = Number(target.getAttribute("data-zone-point-index"));
+        if (!Number.isInteger(zoneIdx) || !Number.isInteger(pointIdx)) return;
+        if (zoneIdx < 0 || zoneIdx >= noGoZones.length) return;
+        if (pointIdx < 0 || pointIdx >= noGoZones[zoneIdx].length) return;
+        evt.preventDefault();
+        isDraggingPoint = true;
+        dragMode = "nogo";
+        dragZoneIndex = zoneIdx;
+        dragPointIndex = pointIdx;
+        statusEl.textContent = "状态：正在拖拽禁区点";
+      });
+
+      corridorZonesLayerEl.addEventListener("mousedown", (evt) => {
+        if (activeTool !== "corridor") return;
+        const target = evt.target;
+        if (!(target instanceof SVGElement)) return;
+        const zoneIdx = Number(target.getAttribute("data-corridor-index"));
+        const pointIdx = Number(target.getAttribute("data-corridor-point-index"));
+        if (!Number.isInteger(zoneIdx) || !Number.isInteger(pointIdx)) return;
+        if (zoneIdx < 0 || zoneIdx >= corridorZones.length) return;
+        if (pointIdx < 0 || pointIdx >= corridorZones[zoneIdx].length) return;
+        evt.preventDefault();
+        isDraggingPoint = true;
+        dragMode = "corridor";
+        dragZoneIndex = zoneIdx;
+        dragPointIndex = pointIdx;
+        statusEl.textContent = "状态：正在拖拽过道点";
+      });
+
+      window.addEventListener("mousemove", (evt) => {
+        if (!isDraggingPoint) return;
+        const point = getOverlayPoint(evt);
+        if (!point) return;
+        if (dragMode === "boundary") {
+          const editablePoints = boundaryDraftPoints.length > 0 ? boundaryDraftPoints : (boundaryClosedShape || []);
+          if (dragPointIndex < 0 || dragPointIndex >= editablePoints.length) return;
+          editablePoints[dragPointIndex] = point;
+          renderBoundary();
+          return;
+        }
+        if (dragMode === "nogo") {
+          if (dragZoneIndex < 0 || dragZoneIndex >= noGoZones.length) return;
+          if (dragPointIndex < 0 || dragPointIndex >= noGoZones[dragZoneIndex].length) return;
+          noGoZones[dragZoneIndex][dragPointIndex] = point;
+          renderNoGoZones();
+          return;
+        }
+        if (dragMode === "corridor") {
+          if (dragZoneIndex < 0 || dragZoneIndex >= corridorZones.length) return;
+          if (dragPointIndex < 0 || dragPointIndex >= corridorZones[dragZoneIndex].length) return;
+          corridorZones[dragZoneIndex][dragPointIndex] = point;
+          renderCorridorZones();
+        }
+      });
+
+      window.addEventListener("mouseup", () => {
+        if (!isDraggingPoint) return;
+        isDraggingPoint = false;
+        dragMode = "";
+        dragZoneIndex = -1;
+        dragPointIndex = -1;
+        statusEl.textContent = "状态：控制点已更新";
+      });
+
+      closeBoundaryBtn.addEventListener("click", () => {
+        if (activeTool === "boundary") closeBoundary();
+        if (activeTool === "nogo") closeNoGoDraft();
+        if (activeTool === "corridor") closeCorridorDraft();
+      });
+
+      acceptCandidateBtn.addEventListener("click", () => {
+        if (candidateBoundaryPoints.length < 3) {
+          statusEl.textContent = "状态：当前没有可接受的候选草坪范围";
+          return;
+        }
+        boundaryClosedShape = candidateBoundaryPoints.map((p) => ({ x: p.x, y: p.y }));
+        boundaryDraftPoints = [];
+        renderBoundary();
+        setActiveTool("boundary");
+        statusEl.textContent = "状态：已接受候选草坪范围，可继续微调";
+      });
+
+      function buildCandidateBoundaryFromModel(seedPoint) {
+        if (!projectionModel) return candidateBoundaryPoints.slice();
+        const { density, gridCols, gridRows, threshold, thresholdGrow } = projectionModel;
+        const seedCol = Math.max(0, Math.min(gridCols - 1, Math.floor((seedPoint.x / 1000) * gridCols)));
+        const seedRow = Math.max(0, Math.min(gridRows - 1, Math.floor((seedPoint.y / 620) * gridRows)));
+        const visited = Array.from({ length: gridRows }, () => Array(gridCols).fill(false));
+        const queue = [[seedRow, seedCol]];
+        const activeCells = [];
+        visited[seedRow][seedCol] = true;
+        while (queue.length > 0) {
+          const [row, col] = queue.shift();
+          const v = density[row][col];
+          if (v >= thresholdGrow) {
+            activeCells.push([row, col]);
+            const dirs = [[1,0],[-1,0],[0,1],[0,-1]];
+            for (const [dr, dc] of dirs) {
+              const nr = row + dr;
+              const nc = col + dc;
+              if (nr < 0 || nr >= gridRows || nc < 0 || nc >= gridCols) continue;
+              if (visited[nr][nc]) continue;
+              visited[nr][nc] = true;
+              if (density[nr][nc] >= thresholdGrow) queue.push([nr, nc]);
+            }
+          }
+        }
+        if (activeCells.length < 6) {
+          for (let row = 0; row < gridRows; row += 1) {
+            for (let col = 0; col < gridCols; col += 1) {
+              if (density[row][col] >= threshold) activeCells.push([row, col]);
+            }
+          }
+        }
+        const pts = activeCells.map(([row, col]) => ({
+          x: ((col + 0.5) / gridCols) * 1000,
+          y: ((row + 0.5) / gridRows) * 620
+        }));
+        if (pts.length < 3) return [];
+        return simplifyPolygon(convexHull(pts), 12);
+      }
+
+      seedCandidateBtn.addEventListener("click", () => {
+        if (projectionLayerEl.style.display !== "block") {
+          statusEl.textContent = "状态：请先完成点云解析";
+          return;
+        }
+        if (!projectionModel) {
+          statusEl.textContent = "状态：当前底图还没有可用密度模型";
+          return;
+        }
+        guideSeedMode = true;
+        setActiveTool("");
+        statusEl.textContent = "状态：请在草坪内部点一下，系统将重算候选范围";
+      });
+
+      resetBoundaryBtn.addEventListener("click", () => {
+        if (activeTool === "nogo") {
+          resetNoGoDrawing(false);
+          statusEl.textContent = "状态：当前禁区草稿已清空";
+          return;
+        }
+        if (activeTool === "corridor") {
+          resetCorridorDrawing(false);
+          statusEl.textContent = "状态：当前过道草稿已清空";
+          return;
+        }
+        resetBoundaryDrawing();
+        if (activeTool !== "boundary") setActiveTool("boundary");
+        statusEl.textContent = "状态：边界已清空，可重新绘制";
+      });
+
+      undoStepBtn.addEventListener("click", () => {
+        undoOneStep();
+      });
+
+      window.addEventListener("keydown", (evt) => {
+        if (evt.key === "Enter") {
+          if (activeTool === "boundary") closeBoundary();
+          if (activeTool === "nogo") closeNoGoDraft();
+          if (activeTool === "corridor") closeCorridorDraft();
+        }
+        if ((evt.metaKey || evt.ctrlKey) && evt.key.toLowerCase() === "z") {
+          evt.preventDefault();
+          undoOneStep();
+        }
+      });
+
+      fileInput.addEventListener("change", () => {
+        void (async () => {
+        const file = fileInput.files && fileInput.files[0];
+        if (!file) {
+          statusEl.textContent = "状态：未选择文件";
+          return;
+        }
+
+        const ext = detectExt(file.name || "");
+        const typeLabel = supportedTypes[ext];
+
+        fileNameEl.textContent = file.name || "未知";
+        fileSizeEl.textContent = formatSize(file.size);
+        fileTypeEl.textContent = typeLabel || (file.type || ext.toUpperCase() || "未知");
+
+        if (!typeLabel) {
+          statusEl.textContent = "状态：文件类型不支持（请使用 .ply/.pcd/.las/.laz/.xyz/.txt）";
+          resetSteps();
+          setBadge("失败", "error");
+          taskSummaryEl.textContent = "任务创建失败：文件类型不支持";
+          projectionLayerEl.style.display = "none";
+          projectionLayerEl.style.backgroundImage = "";
+          mapPlaceholderEl.style.display = "grid";
+          setPointCloudStatsEmpty();
+          resetBoundaryDrawing();
+          resetNoGoDrawing(true);
+          resetCorridorDrawing(true);
+          setActiveTool("");
+          return;
+        }
+
+        if (file.size >= largeFileThresholdBytes) {
+          statusEl.textContent = "状态：已载入大文件（解析可能较慢）";
+        }
+        if (file.size < largeFileThresholdBytes) {
+          statusEl.textContent = "状态：已载入文件（待点云解析）";
+        }
+        await beginRealParseFlow(file, ext);
+        })();
+      });
+    </script>
+  </body>
+</html>
