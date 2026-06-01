@@ -26,6 +26,11 @@ def fetch_bytes(url, params):
         return response.read()
 
 
+def fetch_bytes_from_href(href):
+    with urlopen(href) as response:
+        return response.read()
+
+
 def ring_bbox(rings):
     xs = []
     ys = []
@@ -205,7 +210,14 @@ def main():
     pad = args.padding_m
     bbox = [xmin - pad, ymin - pad, xmax + pad, ymax + pad]
 
-    image_bytes = fetch_bytes(
+    requested_bbox = {
+        "xmin": bbox[0],
+        "ymin": bbox[1],
+        "xmax": bbox[2],
+        "ymax": bbox[3],
+    }
+
+    export_meta = fetch_json(
         AERIAL_EXPORT,
         {
             "bbox": ",".join(str(v) for v in bbox),
@@ -214,11 +226,17 @@ def main():
             "size": args.image_size,
             "format": "png32",
             "transparent": "false",
-            "f": "image",
+            "f": "pjson",
         },
     )
+    href = export_meta.get("href")
+    if not href:
+        raise SystemExit("Aerial export did not return image href.")
+    image_bytes = fetch_bytes_from_href(href)
+    actual_extent = export_meta.get("extent", {})
 
     meta = {
+        "boundary_mode": args.boundary_mode,
         "requested_address": args.address,
         "matched_address": address_feature["attributes"]["FullAddress"],
         "address_point": address_point,
@@ -240,11 +258,18 @@ def main():
             }
             for f in parcel_features
         ],
-        "bbox_2193": {
-            "xmin": bbox[0],
-            "ymin": bbox[1],
-            "xmax": bbox[2],
-            "ymax": bbox[3],
+        "bbox_2193": requested_bbox,
+        "requested_bbox_2193": requested_bbox,
+        "actual_extent_2193": {
+            "xmin": actual_extent.get("xmin", requested_bbox["xmin"]),
+            "ymin": actual_extent.get("ymin", requested_bbox["ymin"]),
+            "xmax": actual_extent.get("xmax", requested_bbox["xmax"]),
+            "ymax": actual_extent.get("ymax", requested_bbox["ymax"]),
+        },
+        "export_image": {
+            "width": int(export_meta.get("width", int(args.image_size.split(",")[0]))),
+            "height": int(export_meta.get("height", int(args.image_size.split(",")[1]))),
+            "href": href,
         },
         "services": {
             "address_layer": ADDRESS_LAYER,

@@ -142,6 +142,8 @@
         <span>Pairs</span><strong id="pairCount">0</strong>
         <span>PointCloud SR</span><strong>local XY</strong>
         <span>Council SR</span><strong>NZTM (EPSG:2193)</strong>
+        <span>Boundary Source</span><strong id="boundarySource">-</strong>
+        <span>Main Parcel</span><strong id="mainParcelDesc">-</strong>
       </div>
       <table>
         <thead>
@@ -175,11 +177,15 @@
   </div>
 
   <script>
-    const pcMetaUrl = "../.codex-artifacts/topview/stage1_bundle/topview_metadata.json";
-    const councilMetaUrl = "../.codex-artifacts/council-context/16-pounamu-place-shelly-park-auckland-2014.json";
+    const pcMetaBaseUrl = "../.codex-artifacts/topview/stage1_bundle/topview_metadata.json";
+    const councilMetaBaseUrl = "../.codex-artifacts/council-context/16-pounamu-place-shelly-park-auckland-2014.json";
+    const pcImageBaseUrl = "../.codex-artifacts/topview/stage1_bundle/topview_crop.png";
+    const councilImageBaseUrl = "../.codex-artifacts/council-context/16-pounamu-place-shelly-park-auckland-2014.png";
 
     const statusText = document.getElementById("statusText");
     const pairCount = document.getElementById("pairCount");
+    const boundarySource = document.getElementById("boundarySource");
+    const mainParcelDesc = document.getElementById("mainParcelDesc");
     const pairRows = document.getElementById("pairRows");
     const undoBtn = document.getElementById("undoBtn");
     const clearBtn = document.getElementById("clearBtn");
@@ -197,6 +203,15 @@
     const pairs = [];
     let pendingPc = null;
     let councilMaskRingsImage = [];
+    const assetVersion = String(Date.now());
+
+    function withVersion(url) {
+      return `${url}?v=${assetVersion}`;
+    }
+
+    function getCouncilExtent() {
+      return councilMeta.actual_extent_2193 || councilMeta.bbox_2193;
+    }
 
     function fitCanvasToImage(img, canvas) {
       canvas.width = img.clientWidth;
@@ -217,9 +232,9 @@
     }
 
     function councilWorldToImage(x, y) {
-      const bbox = councilMeta.bbox_2193;
-      const imageW = councilImage.naturalWidth || 1200;
-      const imageH = councilImage.naturalHeight || 1200;
+      const bbox = getCouncilExtent();
+      const imageW = councilImage.naturalWidth || (councilMeta.export_image && councilMeta.export_image.width) || 1200;
+      const imageH = councilImage.naturalHeight || (councilMeta.export_image && councilMeta.export_image.height) || 1200;
       const px = ((x - bbox.xmin) / Math.max(bbox.xmax - bbox.xmin, 1e-9)) * (imageW - 1);
       const py = ((bbox.ymax - y) / Math.max(bbox.ymax - bbox.ymin, 1e-9)) * (imageH - 1);
       return { x: px, y: py };
@@ -233,7 +248,16 @@
     }
 
     function buildCouncilMaskGeometry() {
-      const geom = councilMeta.property_geometry;
+      const mode = councilMeta.boundary_mode;
+      const mainGeom = councilMeta.main_parcel && councilMeta.main_parcel.geometry;
+      const legalGeom = councilMeta.legal_parcel_geometry;
+      const propertyGeom = councilMeta.property_geometry;
+      let geom = propertyGeom;
+      if (mode === "main_parcel" && mainGeom && Array.isArray(mainGeom.rings) && mainGeom.rings.length) {
+        geom = mainGeom;
+      } else if (mode === "legal_parcel" && legalGeom && Array.isArray(legalGeom.rings) && legalGeom.rings.length) {
+        geom = legalGeom;
+      }
       const rings = (geom && geom.rings) ? geom.rings : [];
       councilMaskRingsImage = rings.map((ring) =>
         ring.map((xy) => councilWorldToImage(xy[0], xy[1]))
@@ -341,9 +365,9 @@
     }
 
     function councilPixelToWorld(px, py) {
-      const bbox = councilMeta.bbox_2193;
-      const imageW = 1200;
-      const imageH = 1200;
+      const bbox = getCouncilExtent();
+      const imageW = councilImage.naturalWidth || (councilMeta.export_image && councilMeta.export_image.width) || 1200;
+      const imageH = councilImage.naturalHeight || (councilMeta.export_image && councilMeta.export_image.height) || 1200;
       const x = bbox.xmin + (px / Math.max(imageW - 1, 1)) * (bbox.xmax - bbox.xmin);
       const y = bbox.ymax - (py / Math.max(imageH - 1, 1)) * (bbox.ymax - bbox.ymin);
       return { x, y };
@@ -365,7 +389,8 @@
         council_meta: {
           requested_address: councilMeta.requested_address,
           matched_address: councilMeta.matched_address,
-          bbox_2193: councilMeta.bbox_2193
+          bbox_2193: councilMeta.bbox_2193,
+          actual_extent_2193: getCouncilExtent()
         },
         pairs
       };
@@ -441,12 +466,40 @@
       });
     }
 
+    async function fetchJsonNoCache(url) {
+      const resp = await fetch(withVersion(url), { cache: "no-store" });
+      if (!resp.ok) {
+        throw new Error(`Failed to fetch ${url}: ${resp.status}`);
+      }
+      return resp.json();
+    }
+
+    function waitForImageReady(img) {
+      if (img.complete && img.naturalWidth > 0) {
+        return Promise.resolve();
+      }
+      return new Promise((resolve, reject) => {
+        img.onload = () => resolve();
+        img.onerror = () => reject(new Error(`Failed to load image: ${img.src}`));
+      });
+    }
+
+    pcImage.src = withVersion(pcImageBaseUrl);
+    councilImage.src = withVersion(councilImageBaseUrl);
+
     Promise.all([
-      fetch(pcMetaUrl).then((r) => r.json()),
-      fetch(councilMetaUrl).then((r) => r.json())
+      fetchJsonNoCache(pcMetaBaseUrl),
+      fetchJsonNoCache(councilMetaBaseUrl),
+      waitForImageReady(pcImage),
+      waitForImageReady(councilImage)
     ]).then(([pc, council]) => {
       pcMeta = pc;
       councilMeta = council;
+      boundarySource.textContent = councilMeta.boundary_source || councilMeta.boundary_mode || "-";
+      const desc = councilMeta.main_parcel &&
+        councilMeta.main_parcel.attributes &&
+        councilMeta.main_parcel.attributes.ParcelDescription;
+      mainParcelDesc.textContent = desc || "-";
       buildCouncilMaskGeometry();
       fitCanvasToImage(pcImage, pcCanvas);
       fitCanvasToImage(councilImage, councilCanvas);
