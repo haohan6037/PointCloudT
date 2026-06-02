@@ -146,6 +146,7 @@
         <span>Boundary Source</span><strong id="boundarySource">-</strong>
         <span>Main Parcel</span><strong id="mainParcelDesc">-</strong>
         <span>Preview RMSE (m)</span><strong id="previewRmse">-</strong>
+        <span>Boundary Points</span><strong id="boundaryPointCount">-</strong>
       </div>
       <table>
         <thead>
@@ -194,6 +195,7 @@
     const previewBtn = document.getElementById("previewBtn");
     const copyBtn = document.getElementById("copyBtn");
     const previewRmseEl = document.getElementById("previewRmse");
+    const boundaryPointCountEl = document.getElementById("boundaryPointCount");
 
     const pcImage = document.getElementById("pcImage");
     const councilImage = document.getElementById("councilImage");
@@ -391,6 +393,31 @@
       }).filter((ring) => ring.length >= 3);
     }
 
+    function normalizePcImagePoint(pt) {
+      const w = Math.max(pcMeta.crop_image.width, 1);
+      const h = Math.max(pcMeta.crop_image.height, 1);
+      return {
+        x: pt.x / w,
+        y: pt.y / h,
+      };
+    }
+
+    function serializeProjectedBoundary() {
+      return projectedParcelOnPcImage.map((ring) => ({
+        pixels: ring.map((pt) => ({
+          x: Number(pt.x.toFixed(3)),
+          y: Number(pt.y.toFixed(3)),
+        })),
+        relative: ring.map((pt) => {
+          const rel = normalizePcImagePoint(pt);
+          return {
+            x: Number(rel.x.toFixed(6)),
+            y: Number(rel.y.toFixed(6)),
+          };
+        }),
+      }));
+    }
+
     function drawProjectedParcelOnPointCloud() {
       if (!projectedParcelOnPcImage.length) return;
       pcCtx.save();
@@ -485,6 +512,9 @@
         drawPoint(pcCtx, pendingPc.xView, pendingPc.yView, "*", "#2c66c3");
       }
       pairCount.textContent = String(pairs.length);
+      boundaryPointCountEl.textContent = projectedParcelOnPcImage.length
+        ? String(projectedParcelOnPcImage.reduce((sum, ring) => sum + ring.length, 0))
+        : "-";
       renderRows();
     }
 
@@ -540,6 +570,7 @@
           bbox_2193: councilMeta.bbox_2193,
           actual_extent_2193: getCouncilExtent()
         },
+        projected_boundary_on_pointcloud: serializeProjectedBoundary(),
         pairs
       };
       return JSON.stringify(payload, null, 2);
@@ -563,12 +594,16 @@
       if (!tf) {
         projectedParcelOnPcImage = [];
         previewRmseEl.textContent = "-";
+        boundaryPointCountEl.textContent = "-";
         statusText.textContent = "Need at least 2 valid pairs to preview parcel on pointcloud.";
         redraw();
         return;
       }
       buildProjectedParcelOnPointCloud(tf);
       previewRmseEl.textContent = tf.rmse.toFixed(3);
+      boundaryPointCountEl.textContent = String(
+        projectedParcelOnPcImage.reduce((sum, ring) => sum + ring.length, 0)
+      );
       statusText.textContent = `Preview ready. Parcel projected to pointcloud (RMSE ${tf.rmse.toFixed(3)}m).`;
       redraw();
     }
@@ -624,6 +659,7 @@
         pendingPc = null;
         projectedParcelOnPcImage = [];
         previewRmseEl.textContent = "-";
+        boundaryPointCountEl.textContent = "-";
         redraw();
       });
 
