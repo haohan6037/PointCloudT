@@ -186,6 +186,42 @@
         font-size: 14px;
       }
 
+      .address-card {
+        margin: 10px 0 14px;
+        padding: 10px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fffdf8;
+      }
+
+      .address-card h3 {
+        margin: 0 0 8px;
+        font-size: 14px;
+      }
+
+      .address-field {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .address-field input {
+        width: 100%;
+        padding: 10px 12px;
+        border: 1px solid #d6cebf;
+        border-radius: 8px;
+        background: #ffffff;
+        color: var(--ink);
+        font: inherit;
+      }
+
+      .address-field p {
+        margin: 0;
+        font-size: 12px;
+        line-height: 1.5;
+        color: var(--muted);
+      }
+
       .task-head {
         display: flex;
         align-items: center;
@@ -279,23 +315,36 @@
         opacity: 0.6;
       }
 
-      .map-placeholder {
+      .map-viewport {
         position: absolute;
         inset: 18px;
         border-radius: 8px;
+        overflow: hidden;
+        border: 1px solid #bfb6a8;
+      }
+
+      .map-stage {
+        position: absolute;
+        inset: 0;
+        transform-origin: 0 0;
+        will-change: transform;
+      }
+
+      .map-placeholder {
+        position: absolute;
+        inset: 0;
         border: 2px dashed #c7bead;
         display: grid;
         place-items: center;
         color: var(--muted);
         text-align: center;
         padding: 16px;
+        background: rgba(236, 231, 221, 0.92);
       }
 
       .projection-layer {
         position: absolute;
-        inset: 18px;
-        border-radius: 8px;
-        border: 1px solid #bfb6a8;
+        inset: 0;
         display: none;
         overflow: hidden;
         background:
@@ -327,7 +376,7 @@
 
       .boundary-overlay {
         position: absolute;
-        inset: 18px;
+        inset: 0;
         z-index: 3;
       }
 
@@ -412,6 +461,21 @@
         font-size: 13px;
       }
 
+      .view-badge {
+        position: absolute;
+        top: 14px;
+        left: 14px;
+        z-index: 5;
+        min-width: 58px;
+        text-align: center;
+        background: rgba(255, 255, 255, 0.94);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 8px 10px;
+        font-size: 13px;
+        color: var(--ink);
+      }
+
       @media (max-width: 960px) {
         .layout {
           grid-template-columns: 1fr;
@@ -427,10 +491,14 @@
       <header class="topbar">
         <div>
           <h1 class="brand">PointCloudTT</h1>
-          <p class="subtitle">点云转 2D 地图工作台（第一步：基础壳子）</p>
+          <p class="subtitle">点云转 2D 地图工作台（第一阶段：住宅裁剪与草坪初稿）</p>
         </div>
         <div class="toolbar">
           <button id="importBtn" class="btn primary" type="button">导入点云</button>
+          <button id="runAddressFlowBtn" class="btn" type="button">生成住宅图</button>
+          <button id="zoomOutBtn" class="btn ghost-action" type="button">缩小</button>
+          <button id="zoomInBtn" class="btn ghost-action" type="button">放大</button>
+          <button id="resetViewBtn" class="btn ghost-action" type="button">复位视图</button>
           <button id="boundaryToolBtn" class="btn" type="button">边界工具</button>
           <button id="closeBoundaryBtn" class="btn ghost-action" type="button">完成边界</button>
           <button id="resetBoundaryBtn" class="btn ghost-action" type="button">重绘边界</button>
@@ -445,6 +513,18 @@
       <main class="layout">
         <aside class="panel side">
           <h2>图层</h2>
+          <div class="address-card">
+            <h3>住宅地址</h3>
+            <div class="address-field">
+              <input
+                id="addressInput"
+                type="text"
+                placeholder="例如：16 POUNAMU PLACE SHELLY PARK AUCKLAND 2014"
+                autocomplete="off"
+              />
+              <p id="addressHint">先导入点云，再输入住宅地址，系统会优先加载已注册的 Council 裁剪流程。</p>
+            </div>
+          </div>
           <div class="meta">
             <h3>点云文件信息</h3>
             <div class="meta-row"><span>文件名</span><strong id="fileName">未选择</strong></div>
@@ -476,27 +556,32 @@
 
         <section class="panel canvas">
           <div class="grid"></div>
+          <div id="viewScaleBadge" class="view-badge">100%</div>
           <div class="status">状态：等待导入点云</div>
-          <div id="projectionLayer" class="projection-layer" aria-label="2D 投影底图占位层"></div>
-          <div id="boundaryOverlay" class="boundary-overlay">
-            <svg id="boundarySvg" viewBox="0 0 1000 620" preserveAspectRatio="none">
-              <polygon id="boundaryPolygon" class="boundary-fill" points="" style="display: none"></polygon>
-              <polyline id="boundaryPolyline" class="boundary-line" points="" style="display: none"></polyline>
-              <polygon id="candidatePolygon" class="candidate-fill" points="" style="display: none"></polygon>
-              <circle id="candidateSeedMarker" cx="0" cy="0" r="6" style="display:none; fill:#16a34a; stroke:#ffffff; stroke-width:2"></circle>
-              <g id="boundaryPoints"></g>
-              <g id="noGoZonesLayer"></g>
-              <polyline id="noGoDraftLine" class="nogo-line" points="" style="display: none"></polyline>
-              <g id="noGoDraftPoints"></g>
-              <g id="corridorZonesLayer"></g>
-              <polyline id="corridorDraftLine" class="corridor-line" points="" style="display: none"></polyline>
-              <g id="corridorDraftPoints"></g>
-            </svg>
-          </div>
-          <div class="map-placeholder">
-            <div>
-              <h2>地图画布占位区</h2>
-              <p>导入点云后将在这里显示 2D 投影底图。</p>
+          <div id="mapViewport" class="map-viewport">
+            <div id="mapStage" class="map-stage">
+              <div id="projectionLayer" class="projection-layer" aria-label="2D 投影底图占位层"></div>
+              <div id="boundaryOverlay" class="boundary-overlay">
+                <svg id="boundarySvg" viewBox="0 0 1000 620" preserveAspectRatio="none">
+                  <polygon id="boundaryPolygon" class="boundary-fill" points="" style="display: none"></polygon>
+                  <polyline id="boundaryPolyline" class="boundary-line" points="" style="display: none"></polyline>
+                  <polygon id="candidatePolygon" class="candidate-fill" points="" style="display: none"></polygon>
+                  <circle id="candidateSeedMarker" cx="0" cy="0" r="6" style="display:none; fill:#16a34a; stroke:#ffffff; stroke-width:2"></circle>
+                  <g id="boundaryPoints"></g>
+                  <g id="noGoZonesLayer"></g>
+                  <polyline id="noGoDraftLine" class="nogo-line" points="" style="display: none"></polyline>
+                  <g id="noGoDraftPoints"></g>
+                  <g id="corridorZonesLayer"></g>
+                  <polyline id="corridorDraftLine" class="corridor-line" points="" style="display: none"></polyline>
+                  <g id="corridorDraftPoints"></g>
+                </svg>
+              </div>
+              <div class="map-placeholder">
+                <div>
+                  <h2>地图画布占位区</h2>
+                  <p>导入点云后将在这里显示 2D 投影底图。</p>
+                </div>
+              </div>
             </div>
           </div>
         </section>
@@ -505,6 +590,10 @@
     <input id="fileInput" type="file" accept=".ply,.pcd,.las,.laz,.xyz,.txt" hidden />
     <script>
       const importBtn = document.getElementById("importBtn");
+      const runAddressFlowBtn = document.getElementById("runAddressFlowBtn");
+      const zoomOutBtn = document.getElementById("zoomOutBtn");
+      const zoomInBtn = document.getElementById("zoomInBtn");
+      const resetViewBtn = document.getElementById("resetViewBtn");
       const boundaryToolBtn = document.getElementById("boundaryToolBtn");
       const noGoToolBtn = document.getElementById("noGoToolBtn");
       const corridorToolBtn = document.getElementById("corridorToolBtn");
@@ -515,6 +604,8 @@
       const seedCandidateBtn = document.getElementById("seedCandidateBtn");
       const fileInput = document.getElementById("fileInput");
       const statusEl = document.querySelector(".status");
+      const addressInputEl = document.getElementById("addressInput");
+      const addressHintEl = document.getElementById("addressHint");
       const fileNameEl = document.getElementById("fileName");
       const fileSizeEl = document.getElementById("fileSize");
       const fileTypeEl = document.getElementById("fileType");
@@ -527,6 +618,9 @@
       const taskSummaryEl = document.getElementById("taskSummary");
       const taskBadgeEl = document.getElementById("taskBadge");
       const stepListEl = document.getElementById("stepList");
+      const mapViewportEl = document.getElementById("mapViewport");
+      const mapStageEl = document.getElementById("mapStage");
+      const viewScaleBadgeEl = document.getElementById("viewScaleBadge");
       const projectionLayerEl = document.getElementById("projectionLayer");
       const mapPlaceholderEl = document.querySelector(".map-placeholder");
       const boundaryOverlayEl = document.getElementById("boundaryOverlay");
@@ -552,6 +646,19 @@
       const largeFileThresholdBytes = 200 * 1024 * 1024;
       const parserReadyTypes = new Set(["ply", "xyz", "txt", "las"]);
       const projectionSampleLimit = 12000;
+      const overlayViewWidth = 1000;
+      const overlayViewHeight = 620;
+      const registeredSamples = [
+        {
+          fileName: "16 pounamu pl.las",
+          address: "16 POUNAMU PLACE SHELLY PARK AUCKLAND 2014",
+          assets: {
+            parcelImage: "./.codex-artifacts/topview/stage1_bundle/topview_truecolor.png",
+            parcelMeta: "./.codex-artifacts/topview/stage1_bundle/topview_parcel_crop.json",
+            lawnReview: "./.codex-artifacts/topview/stage2_lawn/lawn_review_data.json"
+          }
+        }
+      ];
       let mockParseTimer = null;
       let activeTool = "";
       let boundaryDraftPoints = [];
@@ -568,6 +675,16 @@
       let isDraggingPoint = false;
       let dragMode = "";
       let dragZoneIndex = -1;
+      let selectedPointCloudFile = null;
+      let viewScale = 1;
+      let viewTranslateX = 0;
+      let viewTranslateY = 0;
+      let spacePressed = false;
+      let isPanning = false;
+      let panStartX = 0;
+      let panStartY = 0;
+      let panOriginX = 0;
+      let panOriginY = 0;
 
       function formatSize(bytes) {
         if (!Number.isFinite(bytes) || bytes < 0) return "-";
@@ -580,6 +697,63 @@
       importBtn.addEventListener("click", () => {
         fileInput.click();
       });
+
+      function applyViewTransform() {
+        mapStageEl.style.transform = "translate(" + viewTranslateX.toFixed(1) + "px, " + viewTranslateY.toFixed(1) + "px) scale(" + viewScale.toFixed(3) + ")";
+        viewScaleBadgeEl.textContent = Math.round(viewScale * 100) + "%";
+      }
+
+      function resetViewTransform() {
+        viewScale = 1;
+        viewTranslateX = 0;
+        viewTranslateY = 0;
+        applyViewTransform();
+      }
+
+      function clampViewScale(nextScale) {
+        return Math.max(1, Math.min(5, nextScale));
+      }
+
+      function zoomAtClientPoint(clientX, clientY, nextScale) {
+        const rect = mapViewportEl.getBoundingClientRect();
+        if (rect.width <= 0 || rect.height <= 0) return;
+        const clampedScale = clampViewScale(nextScale);
+        const localX = clientX - rect.left;
+        const localY = clientY - rect.top;
+        const contentX = (localX - viewTranslateX) / viewScale;
+        const contentY = (localY - viewTranslateY) / viewScale;
+        viewScale = clampedScale;
+        viewTranslateX = localX - contentX * viewScale;
+        viewTranslateY = localY - contentY * viewScale;
+        applyViewTransform();
+      }
+
+      function zoomAroundViewportCenter(factor) {
+        const rect = mapViewportEl.getBoundingClientRect();
+        zoomAtClientPoint(
+          rect.left + rect.width / 2,
+          rect.top + rect.height / 2,
+          viewScale * factor
+        );
+      }
+
+      function normalizeText(value) {
+        return String(value || "")
+          .trim()
+          .toUpperCase()
+          .replace(/[^A-Z0-9]+/g, " ")
+          .replace(/\s+/g, " ")
+          .trim();
+      }
+
+      function findRegisteredSample(fileName, address) {
+        const normalizedFile = normalizeText(fileName);
+        const normalizedAddress = normalizeText(address);
+        return registeredSamples.find((sample) => (
+          normalizeText(sample.fileName) === normalizedFile &&
+          normalizeText(sample.address) === normalizedAddress
+        )) || null;
+      }
 
       function detectExt(filename) {
         const idx = filename.lastIndexOf(".");
@@ -1157,9 +1331,135 @@
 
         projectionLayerEl.style.backgroundImage = 'url("' + canvas.toDataURL("image/png") + '")';
         projectionLayerEl.style.backgroundSize = "cover";
+        projectionLayerEl.style.backgroundRepeat = "no-repeat";
         projectionLayerEl.style.backgroundPosition = "center";
         projectionLayerEl.style.display = "block";
         mapPlaceholderEl.style.display = "none";
+        resetViewTransform();
+      }
+
+      function getContainLayout(imageWidth, imageHeight, boxWidth, boxHeight) {
+        const scale = Math.min(boxWidth / Math.max(imageWidth, 1), boxHeight / Math.max(imageHeight, 1));
+        const width = imageWidth * scale;
+        const height = imageHeight * scale;
+        return {
+          width,
+          height,
+          offsetX: (boxWidth - width) / 2,
+          offsetY: (boxHeight - height) / 2
+        };
+      }
+
+      function mapImagePointToOverlay(point, imageWidth, imageHeight, boxWidth, boxHeight) {
+        const layout = getContainLayout(imageWidth, imageHeight, boxWidth, boxHeight);
+        return {
+          x: layout.offsetX + (point.x / Math.max(imageWidth, 1)) * layout.width,
+          y: layout.offsetY + (point.y / Math.max(imageHeight, 1)) * layout.height
+        };
+      }
+
+      function applyProjectionBackgroundImage(src) {
+        projectionLayerEl.style.backgroundImage = 'url("' + src + '")';
+        projectionLayerEl.style.backgroundSize = "contain";
+        projectionLayerEl.style.backgroundRepeat = "no-repeat";
+        projectionLayerEl.style.backgroundPosition = "center";
+        projectionLayerEl.style.display = "block";
+        mapPlaceholderEl.style.display = "none";
+        resetViewTransform();
+      }
+
+      async function loadRegisteredSampleBundle(sample, file) {
+        const [parcelMeta, lawnReview] = await Promise.all([
+          fetch(sample.assets.parcelMeta, { cache: "no-store" }).then((res) => {
+            if (!res.ok) throw new Error("parcel_meta_fetch_failed");
+            return res.json();
+          }),
+          fetch(sample.assets.lawnReview, { cache: "no-store" }).then((res) => {
+            if (!res.ok) throw new Error("lawn_review_fetch_failed");
+            return res.json();
+          })
+        ]);
+
+        const imageWidth = Number(parcelMeta.image && parcelMeta.image.width) || 1600;
+        const imageHeight = Number(parcelMeta.image && parcelMeta.image.height) || 2340;
+        const initialPolygon = Array.isArray(lawnReview.polygon) ? lawnReview.polygon : [];
+        const overlayPoints = initialPolygon.map((point) => mapImagePointToOverlay(
+          point,
+          imageWidth,
+          imageHeight,
+          overlayViewWidth,
+          overlayViewHeight
+        ));
+
+        applyProjectionBackgroundImage(sample.assets.parcelImage);
+        candidateBoundaryPoints = [];
+        candidateSeedPoint = null;
+        renderCandidateBoundary();
+        boundaryDraftPoints = [];
+        boundaryClosedShape = overlayPoints.length >= 3 ? overlayPoints : [];
+        renderBoundary();
+        resetNoGoDrawing(true);
+        resetCorridorDrawing(true);
+        setActiveTool("boundary");
+
+        pointCountEl.textContent = "基于样例工件";
+        rangeXEl.textContent = lawnReview.world_bounds
+          ? formatRange(lawnReview.world_bounds.x_min, lawnReview.world_bounds.x_max)
+          : "-";
+        rangeYEl.textContent = lawnReview.world_bounds
+          ? formatRange(lawnReview.world_bounds.y_min, lawnReview.world_bounds.y_max)
+          : "-";
+        rangeZEl.textContent = "-";
+        sampleCountEl.textContent = "已生成";
+        groundSampleCountEl.textContent = String(lawnReview.kept_components && lawnReview.kept_components.length ? lawnReview.kept_components.length : 0);
+
+        resetSteps();
+        setStepState("queued", "done");
+        setStepState("parsing", "done");
+        setStepState("done", "done");
+        setBadge("完成", "success");
+        taskSummaryEl.textContent = "已生成真彩点云底图与草坪初稿";
+        statusEl.textContent = "状态：已加载真彩点云底图，可直接拖拽微调草坪边界";
+        addressHintEl.textContent = "当前使用已注册样例流程：草坪初稿直接基于真彩点云底图生成，后续可继续微调。";
+      }
+
+      async function runAddressPipeline(file) {
+        if (!file) {
+          statusEl.textContent = "状态：请先导入点云文件";
+          return;
+        }
+
+        const address = addressInputEl.value.trim();
+        if (!address) {
+          statusEl.textContent = "状态：请先输入住宅地址";
+          addressInputEl.focus();
+          return;
+        }
+
+        const ext = detectExt(file.name || "");
+        const sample = findRegisteredSample(file.name || "", address);
+        resetCandidateBoundary();
+
+        if (sample) {
+          setBadge("运行中", "running");
+          taskSummaryEl.textContent = "正在加载 Council 裁剪图与草坪初稿";
+          setStepState("queued", "active");
+          statusEl.textContent = "状态：正在匹配已注册住宅样例";
+          try {
+            await loadRegisteredSampleBundle(sample, file);
+            return;
+          } catch (error) {
+            setBadge("失败", "error");
+            taskSummaryEl.textContent = "样例工件加载失败";
+            statusEl.textContent = "状态：已识别样例，但本地工件加载失败";
+            addressHintEl.textContent = "已匹配样例地址，但相关裁剪图/草坪工件未成功读取。";
+            return;
+          }
+        }
+
+        addressHintEl.textContent = "当前地址尚未接入 Council 裁剪流程，先回退到本地点云解析视图。";
+        statusEl.textContent = "状态：当前地址未注册，先显示本地点云底图";
+        await beginRealParseFlow(file, ext);
       }
 
       function setStepState(step, state) {
@@ -1182,6 +1482,14 @@
 
       function toPointString(points) {
         return points.map((p) => p.x.toFixed(1) + "," + p.y.toFixed(1)).join(" ");
+      }
+
+      function isNearExistingPoint(point, points, threshold = 12) {
+        return points.some((candidate) => {
+          const dx = candidate.x - point.x;
+          const dy = candidate.y - point.y;
+          return Math.hypot(dx, dy) <= threshold;
+        });
       }
 
       function renderBoundary() {
@@ -1557,10 +1865,12 @@
       }
 
       function getOverlayPoint(evt) {
-        const rect = boundaryOverlayEl.getBoundingClientRect();
+        const rect = mapViewportEl.getBoundingClientRect();
         if (rect.width === 0 || rect.height === 0) return null;
-        const x = ((evt.clientX - rect.left) / rect.width) * 1000;
-        const y = ((evt.clientY - rect.top) / rect.height) * 620;
+        const stageX = (evt.clientX - rect.left - viewTranslateX) / viewScale;
+        const stageY = (evt.clientY - rect.top - viewTranslateY) / viewScale;
+        const x = (stageX / rect.width) * 1000;
+        const y = (stageY / rect.height) * 620;
         return {
           x: Math.max(0, Math.min(1000, x)),
           y: Math.max(0, Math.min(620, y))
@@ -1599,7 +1909,7 @@
       });
 
       boundaryOverlayEl.addEventListener("click", (evt) => {
-        if (isDraggingPoint) return;
+        if (isDraggingPoint || isPanning) return;
         if (projectionLayerEl.style.display !== "block") return;
         const point = getOverlayPoint(evt);
         if (!point) return;
@@ -1614,6 +1924,11 @@
           return;
         }
         if (activeTool === "boundary") {
+          const editablePoints = boundaryDraftPoints.length > 0 ? boundaryDraftPoints : (boundaryClosedShape || []);
+          if (editablePoints.length > 0 && isNearExistingPoint(point, editablePoints)) {
+            statusEl.textContent = "状态：已接近现有边界点，请直接拖拽微调";
+            return;
+          }
           boundaryDraftPoints.push(point);
           renderBoundary();
           statusEl.textContent = "状态：已添加边界点（" + boundaryDraftPoints.length + "）";
@@ -1642,6 +1957,7 @@
       });
 
       boundaryPointsEl.addEventListener("mousedown", (evt) => {
+        if (spacePressed) return;
         if (activeTool !== "boundary") return;
         const editablePoints = boundaryDraftPoints.length > 0 ? boundaryDraftPoints : (boundaryClosedShape || []);
         if (editablePoints.length === 0) return;
@@ -1658,6 +1974,7 @@
       });
 
       noGoZonesLayerEl.addEventListener("mousedown", (evt) => {
+        if (spacePressed) return;
         if (activeTool !== "nogo") return;
         const target = evt.target;
         if (!(target instanceof SVGElement)) return;
@@ -1675,6 +1992,7 @@
       });
 
       corridorZonesLayerEl.addEventListener("mousedown", (evt) => {
+        if (spacePressed) return;
         if (activeTool !== "corridor") return;
         const target = evt.target;
         if (!(target instanceof SVGElement)) return;
@@ -1691,7 +2009,33 @@
         statusEl.textContent = "状态：正在拖拽过道点";
       });
 
+      mapViewportEl.addEventListener("wheel", (evt) => {
+        if (projectionLayerEl.style.display !== "block") return;
+        evt.preventDefault();
+        const factor = evt.deltaY < 0 ? 1.18 : 1 / 1.18;
+        zoomAtClientPoint(evt.clientX, evt.clientY, viewScale * factor);
+      }, { passive: false });
+
+      mapViewportEl.addEventListener("mousedown", (evt) => {
+        if (projectionLayerEl.style.display !== "block") return;
+        const wantsPan = evt.button === 1 || (evt.button === 0 && spacePressed);
+        if (!wantsPan) return;
+        evt.preventDefault();
+        isPanning = true;
+        panStartX = evt.clientX;
+        panStartY = evt.clientY;
+        panOriginX = viewTranslateX;
+        panOriginY = viewTranslateY;
+        statusEl.textContent = "状态：正在平移视图";
+      });
+
       window.addEventListener("mousemove", (evt) => {
+        if (isPanning) {
+          viewTranslateX = panOriginX + (evt.clientX - panStartX);
+          viewTranslateY = panOriginY + (evt.clientY - panStartY);
+          applyViewTransform();
+          return;
+        }
         if (!isDraggingPoint) return;
         const point = getOverlayPoint(evt);
         if (!point) return;
@@ -1718,6 +2062,10 @@
       });
 
       window.addEventListener("mouseup", () => {
+        if (isPanning) {
+          isPanning = false;
+          statusEl.textContent = "状态：视图已更新";
+        }
         if (!isDraggingPoint) return;
         isDraggingPoint = false;
         dragMode = "";
@@ -1819,6 +2167,9 @@
       });
 
       window.addEventListener("keydown", (evt) => {
+        if (evt.code === "Space") {
+          spacePressed = true;
+        }
         if (evt.key === "Enter") {
           if (activeTool === "boundary") closeBoundary();
           if (activeTool === "nogo") closeNoGoDraft();
@@ -1830,6 +2181,12 @@
         }
       });
 
+      window.addEventListener("keyup", (evt) => {
+        if (evt.code === "Space") {
+          spacePressed = false;
+        }
+      });
+
       fileInput.addEventListener("change", () => {
         void (async () => {
         const file = fileInput.files && fileInput.files[0];
@@ -1837,6 +2194,7 @@
           statusEl.textContent = "状态：未选择文件";
           return;
         }
+        selectedPointCloudFile = file;
 
         const ext = detectExt(file.name || "");
         const typeLabel = supportedTypes[ext];
@@ -1865,11 +2223,35 @@
           statusEl.textContent = "状态：已载入大文件（解析可能较慢）";
         }
         if (file.size < largeFileThresholdBytes) {
-          statusEl.textContent = "状态：已载入文件（待点云解析）";
+          statusEl.textContent = "状态：已载入文件，请输入住宅地址后生成住宅图";
         }
-        await beginRealParseFlow(file, ext);
+        taskSummaryEl.textContent = "文件已载入，等待住宅地址";
+        resetSteps();
+        setBadge("待开始", "");
+        addressHintEl.textContent = "文件已载入。输入住宅地址后点击“生成住宅图”，系统会优先加载 Council 裁剪流程。";
         })();
       });
+
+      runAddressFlowBtn.addEventListener("click", () => {
+        void runAddressPipeline(selectedPointCloudFile);
+      });
+
+      zoomInBtn.addEventListener("click", () => {
+        zoomAroundViewportCenter(1.2);
+        statusEl.textContent = "状态：视图已放大";
+      });
+
+      zoomOutBtn.addEventListener("click", () => {
+        zoomAroundViewportCenter(1 / 1.2);
+        statusEl.textContent = "状态：视图已缩小";
+      });
+
+      resetViewBtn.addEventListener("click", () => {
+        resetViewTransform();
+        statusEl.textContent = "状态：视图已复位";
+      });
+
+      applyViewTransform();
     </script>
   </body>
 </html>

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import argparse
+import io
 import json
 from pathlib import Path
 
@@ -35,20 +36,27 @@ def build_parser():
     return parser
 
 
-def render_scatter_png(plt, x, y, rgb, width, height, dpi, point_size, output):
-    output.parent.mkdir(parents=True, exist_ok=True)
+def render_scatter_image(plt, x, y, rgb, width, height, dpi, point_size, facecolor):
+    from PIL import Image
+
     fig = plt.figure(figsize=(width, height), dpi=dpi)
     ax = fig.add_axes([0, 0, 1, 1])
     ax.scatter(x, y, s=point_size, c=rgb, linewidths=0)
     ax.set_aspect("equal")
     ax.axis("off")
-    plt.savefig(output, bbox_inches="tight", pad_inches=0, facecolor="white")
+    buffer = io.BytesIO()
+    plt.savefig(buffer, bbox_inches="tight", pad_inches=0, facecolor=facecolor)
     plt.close(fig)
+    buffer.seek(0)
+    return Image.open(buffer).convert("RGB").copy()
 
 
-def compute_content_bbox(np, rgb_u8):
-    nonwhite = np.any(rgb_u8 < 250, axis=2)
-    ys, xs = np.where(nonwhite)
+def compute_content_bbox(np, rgb_u8, mode="nonwhite"):
+    if mode == "nonblack":
+        content = np.any(rgb_u8 > 12, axis=2)
+    else:
+        content = np.any(rgb_u8 < 250, axis=2)
+    ys, xs = np.where(content)
     if len(xs) == 0 or len(ys) == 0:
         return (0, 0, rgb_u8.shape[1], rgb_u8.shape[0])
     return (int(xs.min()), int(ys.min()), int(xs.max() + 1), int(ys.max() + 1))
@@ -112,7 +120,8 @@ def main():
     x = np.asarray(las.x[::step])
     y = np.asarray(las.y[::step])
 
-    if hasattr(las, "red") and hasattr(las, "green") and hasattr(las, "blue"):
+    has_rgb = hasattr(las, "red") and hasattr(las, "green") and hasattr(las, "blue")
+    if has_rgb:
         rgb = np.stack(
             [las.red[::step], las.green[::step], las.blue[::step]],
             axis=1,
@@ -125,19 +134,21 @@ def main():
         normalized = (z - z.min()) / z_span
         rgb = plt.cm.terrain(normalized)[:, :3]
 
-    render_scatter_png(
-        plt, x, y, rgb, args.width, args.height, args.dpi, args.point_size, args.output
+    raw_image = render_scatter_image(
+        plt, x, y, rgb, args.width, args.height, args.dpi, args.point_size, facecolor="white"
     )
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    raw_image.save(args.output)
 
     if args.bundle_dir is not None:
         args.bundle_dir.mkdir(parents=True, exist_ok=True)
         raw_path = args.bundle_dir / "topview_raw.png"
         crop_path = args.bundle_dir / "topview_crop.png"
         enhanced_path = args.bundle_dir / "topview_enhanced.png"
+        truecolor_path = args.bundle_dir / "topview_truecolor.png"
         metadata_path = args.bundle_dir / "topview_metadata.json"
 
-        Image.open(args.output).save(raw_path)
-        raw_image = Image.open(raw_path).convert("RGB")
+        raw_image.save(raw_path)
         raw_np = np.asarray(raw_image)
         x0, y0, x1, y1 = compute_content_bbox(np, raw_np)
         x0, y0, x1, y1 = expand_bbox(x0, y0, x1, y1, raw_np.shape[1], raw_np.shape[0], pad=80)
@@ -148,9 +159,22 @@ def main():
         enhanced_np = enhance_lawn_readability(np, crop_np)
         Image.fromarray(enhanced_np).save(enhanced_path)
 
+        if has_rgb:
+            truecolor_raw = render_scatter_image(
+                plt, x, y, rgb, args.width, args.height, args.dpi, args.point_size, facecolor="black"
+            )
+            truecolor_raw_np = np.asarray(truecolor_raw)
+            tx0, ty0, tx1, ty1 = compute_content_bbox(np, truecolor_raw_np, mode="nonblack")
+            tx0, ty0, tx1, ty1 = expand_bbox(
+                tx0, ty0, tx1, ty1, truecolor_raw_np.shape[1], truecolor_raw_np.shape[0], pad=80
+            )
+            truecolor_crop_np = truecolor_raw_np[ty0:ty1, tx0:tx1]
+            Image.fromarray(truecolor_crop_np).save(truecolor_path)
+
         metadata = {
             "input_file": str(args.input),
             "sampled_points": int(len(x)),
+            "has_rgb": bool(has_rgb),
             "world_bounds": {
                 "x_min": float(x.min()),
                 "x_max": float(x.max()),
@@ -171,10 +195,13 @@ def main():
                 "width": int(crop_np.shape[1]),
                 "height": int(crop_np.shape[0]),
             },
+            "truecolor_image": {
+                "path": truecolor_path.name if has_rgb else None,
+            },
         }
         metadata_path.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
 
-        print("Bundle images:", raw_path, crop_path, enhanced_path, metadata_path)
+        print("Bundle images:", raw_path, crop_path, enhanced_path, truecolor_path if has_rgb else "-", metadata_path)
 
     print("Rendered {} points from {} to {}".format(len(x), args.input, args.output))
 

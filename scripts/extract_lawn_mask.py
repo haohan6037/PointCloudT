@@ -135,7 +135,7 @@ REVIEW_HTML = """<!doctype html>
     pixelAreaEl.textContent = reviewData.pixel_area_m2.toFixed(4) + " m2 / px";
     componentCountEl.textContent = String(reviewData.kept_components.length);
 
-    let mode = "crop";
+    let mode = reviewData.background_mode === "dark" ? "base" : "crop";
     let selectedIndex = -1;
     let compMap = null;
 
@@ -182,8 +182,13 @@ REVIEW_HTML = """<!doctype html>
 
     function setMode(nextMode) {
       mode = nextMode;
-      baseImage.src = nextMode === "crop" ? "topview_crop.png" : "topview_enhanced.png";
-      toggleBtn.textContent = nextMode === "crop" ? "切到增强图" : "切到展示图";
+      if (nextMode === "base") {
+        baseImage.src = reviewData.base_image;
+        toggleBtn.textContent = reviewData.compare_image ? "切到对比图" : "切到识别图";
+      } else {
+        baseImage.src = reviewData.compare_image || reviewData.base_image;
+        toggleBtn.textContent = "切到展示图";
+      }
     }
 
     function updateSelection(idx) {
@@ -200,7 +205,7 @@ REVIEW_HTML = """<!doctype html>
     window.addEventListener("resize", resizeCanvas);
 
     toggleBtn.addEventListener("click", () => {
-      setMode(mode === "crop" ? "enhanced" : "crop");
+      setMode(mode === "base" ? "compare" : "base");
     });
 
     resetBtn.addEventListener("click", () => updateSelection(-1));
@@ -214,7 +219,7 @@ REVIEW_HTML = """<!doctype html>
     });
 
     buildComponentMap();
-    setMode("crop");
+    setMode(mode);
     drawOverlay();
   </script>
 </body>
@@ -224,7 +229,7 @@ REVIEW_HTML = """<!doctype html>
 
 def build_parser():
     parser = argparse.ArgumentParser(
-        description="Extract a lawn candidate mask from enhanced top-view image."
+        description="Extract a lawn candidate mask from top-view image."
     )
     parser.add_argument("input", type=Path, help="Input enhanced PNG")
     parser.add_argument("output_mask", type=Path, help="Output binary mask PNG")
@@ -596,6 +601,21 @@ def extract_polygon_from_mask(mask, epsilon):
     return polygon
 
 
+def choose_primary_component(components):
+    if not components:
+        return None
+    ranked = sorted(
+        enumerate(components),
+        key=lambda item: (
+            item[1]["area_m2"],
+            item[1]["bbox"]["x1"] - item[1]["bbox"]["x0"],
+            item[1]["bbox"]["y1"] - item[1]["bbox"]["y0"],
+        ),
+        reverse=True,
+    )
+    return ranked[0][0]
+
+
 def main():
     args = build_parser().parse_args()
     meta, pixel_area_m2 = load_pixel_area_m2(args.metadata)
@@ -607,10 +627,18 @@ def main():
     h, s, v = rgb_to_hsv(r, g, b)
 
     exg = 2.0 * g - r - b
-    not_white = v < 0.985
-    greenish = (h > 0.18) & (h < 0.42) & (s > 0.10) & (v > 0.15)
-    exg_hit = exg > 0.03
-    seed = not_white & (greenish | exg_hit)
+    border = np.concatenate([v[0, :], v[-1, :], v[:, 0], v[:, -1]])
+    dark_background = float(np.median(border)) < 0.12
+    valid_surface = (v > 0.05) if dark_background else (v < 0.985)
+
+    if dark_background:
+        greenish = (h > 0.10) & (h < 0.22) & (s > 0.18) & (v > 0.28)
+        exg_hit = exg > 0.02
+    else:
+        greenish = (h > 0.11) & (h < 0.23) & (s > 0.16) & (v > 0.30)
+        exg_hit = exg > 0.04
+
+    seed = valid_surface & (greenish | exg_hit)
 
     smooth = majority_filter(seed, rounds=2)
     width_radius_px = max(1, int(round((args.min_width_m / max(meters_per_px, 1e-9)) / 2.0)))
@@ -648,7 +676,14 @@ def main():
             refined_components.append(summary)
 
     final_mask = np.zeros_like(keep_mask, dtype=bool)
-    for summary in refined_components:
+    primary_component_index = choose_primary_component(refined_components)
+    primary_components = (
+        [refined_components[primary_component_index]]
+        if primary_component_index is not None
+        else []
+    )
+
+    for summary in primary_components:
         for x, y in summary["pixels"]:
             final_mask[y, x] = True
     final_mask = final_mask & parcel_clip_mask
@@ -709,6 +744,8 @@ def main():
             "width": int(arr.shape[1]),
             "height": int(arr.shape[0]),
         },
+        "base_image": args.input.name,
+        "compare_image": "topview_enhanced.png" if args.input.name != "topview_enhanced.png" else "topview_crop.png",
         "min_area_m2": float(args.min_area_m2),
         "min_width_m": float(args.min_width_m),
         "inset_m": float(args.inset_m),
@@ -716,7 +753,9 @@ def main():
         "pixel_area_m2": float(pixel_area_m2),
         "world_bounds": meta["world_bounds"],
         "parcel_clip": parcel_clip_info,
+        "background_mode": "dark" if dark_background else "light",
         "kept_components": refined_components,
+        "selected_component_index": int(primary_component_index) if primary_component_index is not None else -1,
         "polygon": polygon,
     }
 
@@ -731,8 +770,10 @@ def main():
 
     max_component = max((c["area_m2"] for c in refined_components), default=0.0)
     print(
-        "kept_components={} pixel_area_m2={:.5f} max_component_m2={:.1f} polygon_vertices={}".format(
+        "kept_components={} selected_component_index={} background={} pixel_area_m2={:.5f} max_component_m2={:.1f} polygon_vertices={}".format(
             len(refined_components),
+            primary_component_index if primary_component_index is not None else -1,
+            "dark" if dark_background else "light",
             pixel_area_m2,
             max_component,
             len(polygon),
