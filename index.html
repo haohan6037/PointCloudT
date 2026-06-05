@@ -500,9 +500,11 @@
           <button id="zoomInBtn" class="btn ghost-action" type="button">放大</button>
           <button id="resetViewBtn" class="btn ghost-action" type="button">复位视图</button>
           <button id="boundaryToolBtn" class="btn" type="button">边界工具</button>
+          <button id="deletePointBtn" class="btn ghost-action" type="button">删点模式</button>
           <button id="closeBoundaryBtn" class="btn ghost-action" type="button">完成边界</button>
           <button id="resetBoundaryBtn" class="btn ghost-action" type="button">重绘边界</button>
           <button id="undoStepBtn" class="btn ghost-action" type="button">撤销一步</button>
+          <button id="exportMapBtn" class="btn ghost-action" type="button">导出地图</button>
           <button id="acceptCandidateBtn" class="btn accept-action" type="button">接受候选范围</button>
           <button id="seedCandidateBtn" class="btn ghost-action" type="button">草坪引导点</button>
           <button id="noGoToolBtn" class="btn" type="button">禁区工具</button>
@@ -595,11 +597,13 @@
       const zoomInBtn = document.getElementById("zoomInBtn");
       const resetViewBtn = document.getElementById("resetViewBtn");
       const boundaryToolBtn = document.getElementById("boundaryToolBtn");
+      const deletePointBtn = document.getElementById("deletePointBtn");
       const noGoToolBtn = document.getElementById("noGoToolBtn");
       const corridorToolBtn = document.getElementById("corridorToolBtn");
       const closeBoundaryBtn = document.getElementById("closeBoundaryBtn");
       const resetBoundaryBtn = document.getElementById("resetBoundaryBtn");
       const undoStepBtn = document.getElementById("undoStepBtn");
+      const exportMapBtn = document.getElementById("exportMapBtn");
       const acceptCandidateBtn = document.getElementById("acceptCandidateBtn");
       const seedCandidateBtn = document.getElementById("seedCandidateBtn");
       const fileInput = document.getElementById("fileInput");
@@ -663,9 +667,12 @@
       let activeTool = "";
       let boundaryDraftPoints = [];
       let boundaryClosedShape = null;
+      let boundaryHistory = [];
+      let boundaryDeleteMode = false;
       let candidateBoundaryPoints = [];
       let candidateSeedPoint = null;
       let projectionModel = null;
+      let currentMapContext = null;
       let guideSeedMode = false;
       let noGoZones = [];
       let noGoDraftPoints = [];
@@ -1334,6 +1341,13 @@
         projectionLayerEl.style.backgroundRepeat = "no-repeat";
         projectionLayerEl.style.backgroundPosition = "center";
         projectionLayerEl.style.display = "block";
+        projectionLayerEl._projectionInfo = {
+          canvasWidth: canvas.width,
+          canvasHeight: canvas.height,
+          scale,
+          offsetX,
+          offsetY
+        };
         mapPlaceholderEl.style.display = "none";
         resetViewTransform();
       }
@@ -1392,6 +1406,14 @@
         ));
 
         applyProjectionBackgroundImage(sample.assets.parcelImage);
+        currentMapContext = {
+          mode: "registered_sample",
+          fileName: file.name || sample.fileName,
+          address: sample.address,
+          imageWidth,
+          imageHeight,
+          worldBounds: lawnReview.world_bounds || null
+        };
         candidateBoundaryPoints = [];
         candidateSeedPoint = null;
         renderCandidateBoundary();
@@ -1478,6 +1500,40 @@
         boundaryToolBtn.classList.toggle("active-tool", tool === "boundary");
         noGoToolBtn.classList.toggle("active-tool", tool === "nogo");
         corridorToolBtn.classList.toggle("active-tool", tool === "corridor");
+        if (tool !== "boundary") {
+          setBoundaryDeleteMode(false);
+        }
+      }
+
+      function clonePointList(points) {
+        if (!Array.isArray(points)) return [];
+        return points.map((point) => ({ x: point.x, y: point.y }));
+      }
+
+      function cloneOptionalPointList(points) {
+        return Array.isArray(points) ? clonePointList(points) : null;
+      }
+
+      function pushBoundaryHistory() {
+        boundaryHistory.push({
+          draft: clonePointList(boundaryDraftPoints),
+          closed: cloneOptionalPointList(boundaryClosedShape)
+        });
+        if (boundaryHistory.length > 60) boundaryHistory.shift();
+      }
+
+      function restoreBoundaryHistory() {
+        if (boundaryHistory.length === 0) return false;
+        const snapshot = boundaryHistory.pop();
+        boundaryDraftPoints = clonePointList(snapshot.draft || []);
+        boundaryClosedShape = cloneOptionalPointList(snapshot.closed);
+        renderBoundary();
+        return true;
+      }
+
+      function setBoundaryDeleteMode(enabled) {
+        boundaryDeleteMode = Boolean(enabled);
+        deletePointBtn.classList.toggle("active-tool", boundaryDeleteMode);
       }
 
       function toPointString(points) {
@@ -1490,6 +1546,218 @@
           const dy = candidate.y - point.y;
           return Math.hypot(dx, dy) <= threshold;
         });
+      }
+
+      function distanceToSegment(point, start, end) {
+        const dx = end.x - start.x;
+        const dy = end.y - start.y;
+        const lengthSq = dx * dx + dy * dy;
+        if (lengthSq < 1e-9) {
+          return Math.hypot(point.x - start.x, point.y - start.y);
+        }
+        const t = Math.max(0, Math.min(1, ((point.x - start.x) * dx + (point.y - start.y) * dy) / lengthSq));
+        const projX = start.x + t * dx;
+        const projY = start.y + t * dy;
+        return Math.hypot(point.x - projX, point.y - projY);
+      }
+
+      function findBoundaryInsertionIndex(point, points, closed, threshold = 14) {
+        if (!Array.isArray(points) || points.length < 2) return -1;
+        let bestIndex = -1;
+        let bestDistance = Infinity;
+        const segmentCount = closed ? points.length : points.length - 1;
+        for (let i = 0; i < segmentCount; i += 1) {
+          const start = points[i];
+          const end = points[(i + 1) % points.length];
+          const distance = distanceToSegment(point, start, end);
+          if (distance < bestDistance) {
+            bestDistance = distance;
+            bestIndex = i + 1;
+          }
+        }
+        return bestDistance <= threshold ? bestIndex : -1;
+      }
+
+      function deleteBoundaryPoint(index) {
+        const editablePoints = boundaryDraftPoints.length > 0 ? boundaryDraftPoints : (boundaryClosedShape || []);
+        const isClosed = boundaryDraftPoints.length === 0 && Array.isArray(boundaryClosedShape);
+        if (index < 0 || index >= editablePoints.length) return false;
+        if (isClosed && editablePoints.length <= 3) {
+          statusEl.textContent = "状态：闭合边界至少需要保留 3 个点";
+          return false;
+        }
+        pushBoundaryHistory();
+        editablePoints.splice(index, 1);
+        if (isClosed && editablePoints.length < 3) {
+          boundaryClosedShape = null;
+          boundaryDraftPoints = editablePoints.slice();
+        }
+        renderBoundary();
+        return true;
+      }
+
+      function getBoundaryPointsForExport() {
+        if (boundaryDraftPoints.length >= 3) return boundaryDraftPoints;
+        if (boundaryClosedShape && boundaryClosedShape.length >= 3) return boundaryClosedShape;
+        return [];
+      }
+
+      function getCurrentImageMetrics() {
+        if (currentMapContext && Number.isFinite(currentMapContext.imageWidth) && Number.isFinite(currentMapContext.imageHeight)) {
+          return { width: currentMapContext.imageWidth, height: currentMapContext.imageHeight };
+        }
+        return { width: overlayViewWidth, height: overlayViewHeight };
+      }
+
+      function overlayPointToImagePoint(point) {
+        const metrics = getCurrentImageMetrics();
+        if (currentMapContext && currentMapContext.mode === "registered_sample") {
+          const layout = getContainLayout(metrics.width, metrics.height, overlayViewWidth, overlayViewHeight);
+          const x = ((point.x - layout.offsetX) / Math.max(layout.width, 1e-6)) * metrics.width;
+          const y = ((point.y - layout.offsetY) / Math.max(layout.height, 1e-6)) * metrics.height;
+          return {
+            x: Math.max(0, Math.min(metrics.width, x)),
+            y: Math.max(0, Math.min(metrics.height, y))
+          };
+        }
+        return {
+          x: (point.x / overlayViewWidth) * metrics.width,
+          y: (point.y / overlayViewHeight) * metrics.height
+        };
+      }
+
+      function overlayPointToWorldPoint(point) {
+        if (!currentMapContext) return null;
+        if (currentMapContext.mode === "registered_sample" && currentMapContext.worldBounds) {
+          const imgPoint = overlayPointToImagePoint(point);
+          const width = Math.max(currentMapContext.imageWidth - 1, 1);
+          const height = Math.max(currentMapContext.imageHeight - 1, 1);
+          return {
+            x: currentMapContext.worldBounds.x_min + (imgPoint.x / width) * (currentMapContext.worldBounds.x_max - currentMapContext.worldBounds.x_min),
+            y: currentMapContext.worldBounds.y_max - (imgPoint.y / height) * (currentMapContext.worldBounds.y_max - currentMapContext.worldBounds.y_min)
+          };
+        }
+        if (currentMapContext.mode === "parsed_pointcloud" && currentMapContext.projection) {
+          const proj = currentMapContext.projection;
+          return {
+            x: currentMapContext.worldBounds.x_min + ((point.x - proj.offsetX) / proj.scale),
+            y: currentMapContext.worldBounds.y_min + (((proj.canvasHeight - point.y) - proj.offsetY) / proj.scale)
+          };
+        }
+        return null;
+      }
+
+      function toRelativePoint(point) {
+        return {
+          x: point.x / overlayViewWidth,
+          y: point.y / overlayViewHeight
+        };
+      }
+
+      function serializePoints(points, projector) {
+        return points.map((point) => {
+          const next = projector(point);
+          return {
+            x: Number(next.x.toFixed(6)),
+            y: Number(next.y.toFixed(6))
+          };
+        });
+      }
+
+      function buildMapExportPayload() {
+        const boundaryPoints = getBoundaryPointsForExport();
+        if (boundaryPoints.length < 3) return null;
+
+        const worldPoints = boundaryPoints.map((point) => overlayPointToWorldPoint(point));
+        const hasWorldPoints = worldPoints.every((point) => point && Number.isFinite(point.x) && Number.isFinite(point.y));
+        const imagePoints = serializePoints(boundaryPoints, overlayPointToImagePoint);
+        const relativePoints = serializePoints(boundaryPoints, toRelativePoint);
+        const boundaryGeometryPoints = hasWorldPoints
+          ? worldPoints.map((point) => [Number(point.x.toFixed(6)), Number(point.y.toFixed(6))])
+          : relativePoints.map((point) => [point.x, point.y]);
+
+        const serializeAnnotation = (points, type, name, idx) => {
+          const image = serializePoints(points, overlayPointToImagePoint);
+          const relative = serializePoints(points, toRelativePoint);
+          const world = points.map((point) => overlayPointToWorldPoint(point));
+          const hasWorld = world.every((point) => point && Number.isFinite(point.x) && Number.isFinite(point.y));
+          return {
+            id: type + "_" + String(idx + 1).padStart(3, "0"),
+            type,
+            geometry: {
+              type: "polygon",
+              points: hasWorld
+                ? world.map((point) => [Number(point.x.toFixed(6)), Number(point.y.toFixed(6))])
+                : relative.map((point) => [point.x, point.y])
+            },
+            properties: {
+              name,
+              imagePoints: image,
+              relativePoints: relative
+            }
+          };
+        };
+
+        return {
+          version: "0.1",
+          metadata: {
+            name: (addressInputEl.value || "").trim() || (selectedPointCloudFile && selectedPointCloudFile.name) || "PointCloudTT Export",
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          },
+          coordinateSystem: {
+            unit: hasWorldPoints ? "meter" : "normalized",
+            origin: [0, 0],
+            rotation: 0,
+            scale: 1
+          },
+          source: {
+            type: "point_cloud",
+            filename: (selectedPointCloudFile && selectedPointCloudFile.name) || (currentMapContext && currentMapContext.fileName) || "unknown",
+            address: (addressInputEl.value || "").trim() || null,
+            image: getCurrentImageMetrics(),
+            worldBounds: currentMapContext && currentMapContext.worldBounds ? currentMapContext.worldBounds : null,
+            mode: currentMapContext ? currentMapContext.mode : "unknown"
+          },
+          boundary: {
+            id: "boundary_main",
+            geometry: {
+              type: "polygon",
+              points: boundaryGeometryPoints
+            },
+            properties: {
+              name: "Main Boundary",
+              imagePoints,
+              relativePoints
+            }
+          },
+          annotations: [
+            ...noGoZones.map((points, idx) => serializeAnnotation(points, "no_go_zone", "No-Go Zone " + String(idx + 1), idx)),
+            ...corridorZones.map((points, idx) => serializeAnnotation(points, "corridor", "Corridor " + String(idx + 1), idx))
+          ]
+        };
+      }
+
+      function exportCurrentMap() {
+        const payload = buildMapExportPayload();
+        if (!payload) {
+          statusEl.textContent = "状态：请先完成一个有效边界后再导出";
+          return;
+        }
+        const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const anchor = document.createElement("a");
+        const baseName = ((addressInputEl.value || "").trim() || (selectedPointCloudFile && selectedPointCloudFile.name) || "pointcloudtt-map")
+          .replace(/[^a-zA-Z0-9]+/g, "-")
+          .replace(/^-+|-+$/g, "")
+          .toLowerCase() || "pointcloudtt-map";
+        anchor.href = url;
+        anchor.download = baseName + ".json";
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+        URL.revokeObjectURL(url);
+        statusEl.textContent = "状态：地图 JSON 已导出";
       }
 
       function renderBoundary() {
@@ -1523,9 +1791,13 @@
         });
       }
 
-      function resetBoundaryDrawing() {
+      function resetBoundaryDrawing(clearHistory = true) {
         boundaryDraftPoints = [];
         boundaryClosedShape = null;
+        if (clearHistory) {
+          boundaryHistory = [];
+        }
+        setBoundaryDeleteMode(false);
         dragPointIndex = -1;
         isDraggingPoint = false;
         dragMode = "";
@@ -1628,8 +1900,10 @@
           statusEl.textContent = "状态：至少需要 3 个点才能闭合边界";
           return;
         }
+        pushBoundaryHistory();
         boundaryClosedShape = boundaryDraftPoints.slice();
         boundaryDraftPoints = [];
+        setBoundaryDeleteMode(false);
         renderBoundary();
         statusEl.textContent = "状态：边界已闭合";
       }
@@ -1674,17 +1948,9 @@
 
       function undoOneStep() {
         if (activeTool === "boundary") {
-          if (boundaryDraftPoints.length > 0) {
-            boundaryDraftPoints.pop();
-            renderBoundary();
-            statusEl.textContent = "状态：已撤销最后一个边界草稿点";
-            return;
-          }
-          if (boundaryClosedShape && boundaryClosedShape.length > 0) {
-            boundaryDraftPoints = boundaryClosedShape.slice();
-            boundaryClosedShape = null;
-            renderBoundary();
-            statusEl.textContent = "状态：已撤销边界闭合，已回到草稿";
+          if (restoreBoundaryHistory()) {
+            setBoundaryDeleteMode(false);
+            statusEl.textContent = "状态：已撤销上一步边界编辑";
             return;
           }
           statusEl.textContent = "状态：没有可撤销的边界操作";
@@ -1783,6 +2049,7 @@
         projectionLayerEl.style.display = "none";
         projectionLayerEl.style.backgroundImage = "";
         mapPlaceholderEl.style.display = "grid";
+        currentMapContext = null;
 
         await new Promise((resolve) => {
           window.setTimeout(resolve, 120);
@@ -1808,6 +2075,20 @@
           }
           updatePointCloudStats(stats);
           renderProjectionFromPoints(stats);
+          currentMapContext = {
+            mode: "parsed_pointcloud",
+            fileName: file.name || "unknown",
+            address: addressInputEl.value.trim() || null,
+            imageWidth: overlayViewWidth,
+            imageHeight: overlayViewHeight,
+            worldBounds: {
+              x_min: stats.minX,
+              x_max: stats.maxX,
+              y_min: stats.minY,
+              y_max: stats.maxY
+            },
+            projection: projectionLayerEl._projectionInfo || null
+          };
           candidateBoundaryPoints = buildCandidateBoundary(stats, null);
           renderCandidateBoundary();
 
@@ -1830,6 +2111,7 @@
           projectionLayerEl.style.display = "none";
           projectionLayerEl.style.backgroundImage = "";
           mapPlaceholderEl.style.display = "grid";
+          currentMapContext = null;
           setStepState("parsing", "error");
           setBadge("失败", "error");
 
@@ -1884,10 +2166,24 @@
           return;
         }
         if (boundaryClosedShape && boundaryClosedShape.length >= 3) {
-          statusEl.textContent = "状态：边界已闭合，可重新绘制";
+          statusEl.textContent = "状态：边界已闭合，可拖点微调，点击边线加点，或启用删点模式";
         } else {
           statusEl.textContent = "状态：边界工具已启用，点击画布添加边界点";
         }
+      });
+
+      deletePointBtn.addEventListener("click", () => {
+        if (projectionLayerEl.style.display !== "block") {
+          statusEl.textContent = "状态：请先导入并完成点云解析";
+          return;
+        }
+        if (activeTool !== "boundary") {
+          setActiveTool("boundary");
+        }
+        setBoundaryDeleteMode(!boundaryDeleteMode);
+        statusEl.textContent = boundaryDeleteMode
+          ? "状态：删点模式已开启，点击边界控制点即可删除"
+          : "状态：删点模式已关闭";
       });
 
       noGoToolBtn.addEventListener("click", () => {
@@ -1926,10 +2222,31 @@
         if (activeTool === "boundary") {
           const editablePoints = boundaryDraftPoints.length > 0 ? boundaryDraftPoints : (boundaryClosedShape || []);
           if (editablePoints.length > 0 && isNearExistingPoint(point, editablePoints)) {
-            statusEl.textContent = "状态：已接近现有边界点，请直接拖拽微调";
+            statusEl.textContent = boundaryDeleteMode
+              ? "状态：删点模式中，请点中控制点删除"
+              : "状态：已接近现有边界点，请直接拖拽微调";
             return;
           }
+          const insertionIndex = findBoundaryInsertionIndex(
+            point,
+            editablePoints,
+            boundaryDraftPoints.length === 0 && editablePoints.length >= 3
+          );
+          if (insertionIndex >= 0) {
+            pushBoundaryHistory();
+            editablePoints.splice(insertionIndex, 0, point);
+            setBoundaryDeleteMode(false);
+            renderBoundary();
+            statusEl.textContent = "状态：已插入边界点";
+            return;
+          }
+          if (boundaryClosedShape && boundaryDraftPoints.length === 0) {
+            statusEl.textContent = "状态：当前边界已闭合，请点边线加点、拖拽控制点，或点击重绘边界";
+            return;
+          }
+          pushBoundaryHistory();
           boundaryDraftPoints.push(point);
+          setBoundaryDeleteMode(false);
           renderBoundary();
           statusEl.textContent = "状态：已添加边界点（" + boundaryDraftPoints.length + "）";
           return;
@@ -1966,6 +2283,14 @@
         const idx = Number(target.getAttribute("data-point-index"));
         if (!Number.isInteger(idx) || idx < 0 || idx >= editablePoints.length) return;
         evt.preventDefault();
+        if (boundaryDeleteMode) {
+          if (deleteBoundaryPoint(idx)) {
+            setBoundaryDeleteMode(false);
+            statusEl.textContent = "状态：已删除边界点";
+          }
+          return;
+        }
+        pushBoundaryHistory();
         isDraggingPoint = true;
         dragMode = "boundary";
         dragZoneIndex = -1;
@@ -2085,8 +2410,10 @@
           statusEl.textContent = "状态：当前没有可接受的候选草坪范围";
           return;
         }
+        pushBoundaryHistory();
         boundaryClosedShape = candidateBoundaryPoints.map((p) => ({ x: p.x, y: p.y }));
         boundaryDraftPoints = [];
+        setBoundaryDeleteMode(false);
         renderBoundary();
         setActiveTool("boundary");
         statusEl.textContent = "状态：已接受候选草坪范围，可继续微调";
@@ -2157,13 +2484,20 @@
           statusEl.textContent = "状态：当前过道草稿已清空";
           return;
         }
-        resetBoundaryDrawing();
+        if (boundaryDraftPoints.length > 0 || (boundaryClosedShape && boundaryClosedShape.length > 0)) {
+          pushBoundaryHistory();
+        }
+        resetBoundaryDrawing(false);
         if (activeTool !== "boundary") setActiveTool("boundary");
         statusEl.textContent = "状态：边界已清空，可重新绘制";
       });
 
       undoStepBtn.addEventListener("click", () => {
         undoOneStep();
+      });
+
+      exportMapBtn.addEventListener("click", () => {
+        exportCurrentMap();
       });
 
       window.addEventListener("keydown", (evt) => {
