@@ -6,6 +6,16 @@ This file breaks PointCloudTT into small, assignable tasks for future sub-agents
 
 Use this as the baseline when delegating work. Each task includes difficulty, recommended model, scope, and expected output.
 
+## 1.1 Frozen Implementation Rule
+
+The current high-quality top-view generation flow is frozen as an accepted baseline:
+
+- `scripts/render_topview.py`
+- `scripts/operator_server.py`
+- the upload-to-generate path wired through `index.html`
+
+Do not modify this baseline unless the user explicitly requests a change and then confirms it again before editing. Any future work should treat this flow as stable and build only on top of it.
+
 ## 2. Model Routing
 
 Available models:
@@ -424,4 +434,3 @@ Pause and return to the main session if:
 - Exported map semantics affect real device movement.
 - Validation rules conflict with user expectations.
 - The chosen file format cannot represent required data safely.
-

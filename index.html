@@ -299,6 +299,32 @@
         background: #dc2626;
       }
 
+      .task-progress {
+        margin: 10px 0 8px;
+      }
+
+      .task-progress-bar {
+        width: 100%;
+        height: 10px;
+        border-radius: 999px;
+        background: #e8e1d4;
+        overflow: hidden;
+        border: 1px solid #d8cdbb;
+      }
+
+      .task-progress-fill {
+        height: 100%;
+        width: 0%;
+        background: linear-gradient(90deg, #0f766e 0%, #14b8a6 100%);
+        transition: width 220ms ease;
+      }
+
+      .task-progress-text {
+        margin-top: 6px;
+        font-size: 12px;
+        color: var(--muted);
+      }
+
       .canvas {
         position: relative;
         min-height: 560px;
@@ -362,7 +388,7 @@
       }
 
       .projection-layer::before {
-        content: "2D 地面密度底图";
+        content: attr(data-view-label);
         position: absolute;
         left: 12px;
         bottom: 12px;
@@ -524,7 +550,7 @@
                 placeholder="例如：16 POUNAMU PLACE SHELLY PARK AUCKLAND 2014"
                 autocomplete="off"
               />
-              <p id="addressHint">先导入点云，再输入住宅地址，系统会优先加载已注册的 Council 裁剪流程。</p>
+              <p id="addressHint">先导入点云，再输入住宅地址；系统只加载高质量生成底图，不显示低质量预览。</p>
             </div>
           </div>
           <div class="meta">
@@ -544,6 +570,12 @@
             <div class="task-head">
               <span id="taskSummary">等待导入点云</span>
               <span id="taskBadge" class="task-badge">空闲</span>
+            </div>
+            <div class="task-progress" aria-label="任务进度">
+              <div class="task-progress-bar">
+                <div id="taskProgressFill" class="task-progress-fill"></div>
+              </div>
+              <div id="taskProgressText" class="task-progress-text">当前未开始高质量生成任务</div>
             </div>
             <ol id="stepList" class="step-list">
               <li data-step="queued"><span class="dot"></span><span>排队中</span></li>
@@ -581,7 +613,7 @@
               <div class="map-placeholder">
                 <div>
                   <h2>地图画布占位区</h2>
-                  <p>导入点云后将在这里显示 2D 投影底图。</p>
+                  <p>生成完成后将在这里显示高质量 2D 点云底图。</p>
                 </div>
               </div>
             </div>
@@ -621,6 +653,8 @@
       const groundSampleCountEl = document.getElementById("groundSampleCount");
       const taskSummaryEl = document.getElementById("taskSummary");
       const taskBadgeEl = document.getElementById("taskBadge");
+      const taskProgressFillEl = document.getElementById("taskProgressFill");
+      const taskProgressTextEl = document.getElementById("taskProgressText");
       const stepListEl = document.getElementById("stepList");
       const mapViewportEl = document.getElementById("mapViewport");
       const mapStageEl = document.getElementById("mapStage");
@@ -649,9 +683,12 @@
       };
       const largeFileThresholdBytes = 200 * 1024 * 1024;
       const parserReadyTypes = new Set(["ply", "xyz", "txt", "las"]);
-      const projectionSampleLimit = 12000;
+      const projectionSampleLimit = 160000;
       const overlayViewWidth = 1000;
       const overlayViewHeight = 620;
+      const previewRasterWidth = 1600;
+      const previewRasterHeight = 992;
+      const operatorApiBase = "http://127.0.0.1:8125";
       const registeredSamples = [
         {
           fileName: "16 pounamu pl.las",
@@ -672,7 +709,10 @@
       let candidateBoundaryPoints = [];
       let candidateSeedPoint = null;
       let projectionModel = null;
+      let currentPointCloudStats = null;
       let currentMapContext = null;
+      let currentGeneratedBundle = null;
+      let activeTopviewJobId = "";
       let guideSeedMode = false;
       let noGoZones = [];
       let noGoDraftPoints = [];
@@ -753,13 +793,43 @@
           .trim();
       }
 
+      function tokenizeText(value) {
+        const normalized = normalizeText(value);
+        return normalized ? normalized.split(" ") : [];
+      }
+
+      function isLikelyAddressMatch(sampleAddress, address) {
+        const sampleText = normalizeText(sampleAddress);
+        const addressText = normalizeText(address);
+        if (!sampleText || !addressText) return false;
+        if (sampleText === addressText) return true;
+        if (sampleText.includes(addressText) || addressText.includes(sampleText)) return true;
+
+        const sampleTokens = tokenizeText(sampleAddress);
+        const addressTokens = tokenizeText(address);
+        if (sampleTokens.length === 0 || addressTokens.length === 0) return false;
+
+        const overlap = sampleTokens.filter((token) => addressTokens.includes(token)).length;
+        const sameStreetNumber = sampleTokens[0] === addressTokens[0];
+        return sameStreetNumber && overlap >= Math.min(4, sampleTokens.length, addressTokens.length);
+      }
+
       function findRegisteredSample(fileName, address) {
         const normalizedFile = normalizeText(fileName);
         const normalizedAddress = normalizeText(address);
-        return registeredSamples.find((sample) => (
-          normalizeText(sample.fileName) === normalizedFile &&
-          normalizeText(sample.address) === normalizedAddress
-        )) || null;
+
+        const exactAddressMatch = registeredSamples.find((sample) => normalizeText(sample.address) === normalizedAddress);
+        if (exactAddressMatch) return exactAddressMatch;
+
+        const exactFileMatches = registeredSamples.filter((sample) => normalizeText(sample.fileName) === normalizedFile);
+        if (exactFileMatches.length > 0) {
+          return exactFileMatches[0];
+        }
+
+        const fuzzyAddressMatch = registeredSamples.find((sample) => isLikelyAddressMatch(sample.address, address));
+        if (fuzzyAddressMatch) return fuzzyAddressMatch;
+
+        return null;
       }
 
       function detectExt(filename) {
@@ -771,6 +841,12 @@
       function setBadge(label, cls) {
         taskBadgeEl.textContent = label;
         taskBadgeEl.className = "task-badge" + (cls ? " " + cls : "");
+      }
+
+      function setTaskProgress(percent, text) {
+        const clamped = Math.max(0, Math.min(100, Number(percent) || 0));
+        taskProgressFillEl.style.width = clamped.toFixed(1) + "%";
+        taskProgressTextEl.textContent = text || (clamped === 0 ? "当前未开始高质量生成任务" : "任务进行中");
       }
 
       function setPointCloudStatsEmpty() {
@@ -794,6 +870,29 @@
         rangeZEl.textContent = formatRange(stats.minZ, stats.maxZ);
         sampleCountEl.textContent = String(stats.sampledPoints);
         groundSampleCountEl.textContent = String(stats.groundSampledPoints || 0);
+      }
+
+      function updateTopviewMetadataStats(metadata) {
+        const bounds = metadata.world_bounds || {};
+        pointCountEl.textContent = String(metadata.point_count || metadata.sampled_points || "-");
+        rangeXEl.textContent = formatRange(bounds.x_min, bounds.x_max);
+        rangeYEl.textContent = formatRange(bounds.y_min, bounds.y_max);
+        rangeZEl.textContent = formatRange(bounds.z_min, bounds.z_max);
+        sampleCountEl.textContent = String(metadata.sampled_points || metadata.point_count || "-");
+        groundSampleCountEl.textContent = "高质量底图";
+      }
+
+      function withCacheBust(url) {
+        const joiner = url.includes("?") ? "&" : "?";
+        return url + joiner + "t=" + Date.now();
+      }
+
+      async function fetchJsonNoStore(url) {
+        const response = await fetch(withCacheBust(url), { cache: "no-store" });
+        if (!response.ok) {
+          throw new Error("fetch_failed:" + response.status);
+        }
+        return response.json();
       }
 
       function readFileText(file) {
@@ -867,6 +966,59 @@
           }
         }
         return score;
+      }
+
+      function quantileFromSorted(values, ratio) {
+        if (!values.length) return 0;
+        if (values.length === 1) return values[0];
+        const index = Math.max(0, Math.min(values.length - 1, Math.floor((values.length - 1) * ratio)));
+        return values[index];
+      }
+
+      function computePreviewWorldBounds(points) {
+        if (!Array.isArray(points) || points.length === 0) return null;
+        const xs = [];
+        const ys = [];
+        for (const point of points) {
+          if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) continue;
+          xs.push(point.x);
+          ys.push(point.y);
+        }
+        if (xs.length === 0 || ys.length === 0) return null;
+        xs.sort((a, b) => a - b);
+        ys.sort((a, b) => a - b);
+
+        const qMinX = quantileFromSorted(xs, 0.01);
+        const qMaxX = quantileFromSorted(xs, 0.99);
+        const qMinY = quantileFromSorted(ys, 0.01);
+        const qMaxY = quantileFromSorted(ys, 0.99);
+
+        const robustMinX = Math.min(qMinX, quantileFromSorted(xs, 0.05));
+        const robustMaxX = Math.max(qMaxX, quantileFromSorted(xs, 0.95));
+        const robustMinY = Math.min(qMinY, quantileFromSorted(ys, 0.05));
+        const robustMaxY = Math.max(qMaxY, quantileFromSorted(ys, 0.95));
+
+        const spanX = Math.max(robustMaxX - robustMinX, 1e-6);
+        const spanY = Math.max(robustMaxY - robustMinY, 1e-6);
+        const padX = spanX * 0.06;
+        const padY = spanY * 0.06;
+        return {
+          minX: robustMinX - padX,
+          maxX: robustMaxX + padX,
+          minY: robustMinY - padY,
+          maxY: robustMaxY + padY
+        };
+      }
+
+      function filterPointsToBounds(points, bounds) {
+        if (!Array.isArray(points) || !bounds) return Array.isArray(points) ? points.slice() : [];
+        const filtered = points.filter((point) => (
+          point.x >= bounds.minX &&
+          point.x <= bounds.maxX &&
+          point.y >= bounds.minY &&
+          point.y <= bounds.maxY
+        ));
+        return filtered.length >= 3 ? filtered : points.slice();
       }
 
       function attachGroundLayer(stats) {
@@ -1008,8 +1160,14 @@
       function buildCandidateBoundary(stats, seedPoint) {
         const canvasWidth = 1000;
         const canvasHeight = 620;
-        const spanX = Math.max(stats.maxX - stats.minX, 1e-6);
-        const spanY = Math.max(stats.maxY - stats.minY, 1e-6);
+        const bounds = stats.previewWorldBounds || {
+          minX: stats.minX,
+          maxX: stats.maxX,
+          minY: stats.minY,
+          maxY: stats.maxY
+        };
+        const spanX = Math.max(bounds.maxX - bounds.minX, 1e-6);
+        const spanY = Math.max(bounds.maxY - bounds.minY, 1e-6);
         const pad = 20;
         const scaleX = (canvasWidth - pad * 2) / spanX;
         const scaleY = (canvasHeight - pad * 2) / spanY;
@@ -1020,10 +1178,13 @@
         const gridRows = 26;
         const density = Array.from({ length: gridRows }, () => Array(gridCols).fill(0));
 
-        const sourcePoints = stats.groundSampled && stats.groundSampled.length >= 3 ? stats.groundSampled : stats.sampled;
+        const sourcePoints = filterPointsToBounds(
+          stats.groundSampled && stats.groundSampled.length >= 3 ? stats.groundSampled : stats.sampled,
+          bounds
+        );
         for (const p of sourcePoints) {
-          const px = offsetX + (p.x - stats.minX) * scale;
-          const py = canvasHeight - (offsetY + (p.y - stats.minY) * scale);
+          const px = offsetX + (p.x - bounds.minX) * scale;
+          const py = canvasHeight - (offsetY + (p.y - bounds.minY) * scale);
           const col = Math.max(0, Math.min(gridCols - 1, Math.floor((px / canvasWidth) * gridCols)));
           const row = Math.max(0, Math.min(gridRows - 1, Math.floor((py / canvasHeight) * gridRows)));
           density[row][col] += 1;
@@ -1196,12 +1357,30 @@
         const sampledTarget = Math.min(pointCount, projectionSampleLimit);
         const sampleStep = Math.max(1, Math.floor(pointCount / Math.max(sampledTarget, 1)));
         const sampled = [];
+        const pointHasRgb = pointFormat === 2 || pointFormat === 3 || pointFormat === 5 || pointFormat === 7 || pointFormat === 8 || pointFormat === 10;
         let minX = Infinity;
         let minY = Infinity;
         let minZ = Infinity;
         let maxX = -Infinity;
         let maxY = -Infinity;
         let maxZ = -Infinity;
+        let hasRgb = false;
+
+        function normalizeLasColor(value) {
+          return Math.max(0, Math.min(255, Math.round(value / 257)));
+        }
+
+        function readLasColor(base) {
+          const colorOffset = pointFormat === 2 ? 20 : (pointHasRgb ? 28 : -1);
+          if (colorOffset < 0) return null;
+          if (colorOffset + 6 > pointRecordLength) return null;
+          if (base + colorOffset + 6 > buffer.byteLength) return null;
+          return {
+            red: normalizeLasColor(view.getUint16(base + colorOffset, true)),
+            green: normalizeLasColor(view.getUint16(base + colorOffset + 2, true)),
+            blue: normalizeLasColor(view.getUint16(base + colorOffset + 4, true))
+          };
+        }
 
         for (let i = 0; i < pointCount; i += 1) {
           const base = pointDataOffset + i * pointRecordLength;
@@ -1221,8 +1400,11 @@
           if (z < minZ) minZ = z;
           if (z > maxZ) maxZ = z;
 
+          const color = pointHasRgb ? readLasColor(base) : null;
+          if (color) hasRgb = true;
+
           if (sampled.length < sampledTarget && (i % sampleStep === 0 || i === pointCount - 1)) {
-            sampled.push({ x, y, z });
+            sampled.push(color ? { x, y, z, red: color.red, green: color.green, blue: color.blue } : { x, y, z });
           }
         }
 
@@ -1233,6 +1415,7 @@
         return attachGroundLayer({
           totalPoints: pointCount,
           sampledPoints: sampled.length,
+          hasRgb,
           minX,
           maxX,
           minY,
@@ -1273,6 +1456,7 @@
         return attachGroundLayer({
           totalPoints: points.length,
           sampledPoints: sampled.length,
+          hasRgb: false,
           minX,
           maxX,
           minY,
@@ -1290,50 +1474,113 @@
         const ctx = canvas.getContext("2d");
         if (!ctx) throw new Error("canvas_unavailable");
 
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.fillStyle = "#ece7dd";
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-        const spanX = Math.max(stats.maxX - stats.minX, 1e-6);
-        const spanY = Math.max(stats.maxY - stats.minY, 1e-6);
+        const previewBounds = computePreviewWorldBounds(stats.sampled) || {
+          minX: stats.minX,
+          maxX: stats.maxX,
+          minY: stats.minY,
+          maxY: stats.maxY
+        };
+        stats.previewWorldBounds = previewBounds;
+        const spanX = Math.max(previewBounds.maxX - previewBounds.minX, 1e-6);
+        const spanY = Math.max(previewBounds.maxY - previewBounds.minY, 1e-6);
         const pad = 20;
         const scaleX = (canvas.width - pad * 2) / spanX;
         const scaleY = (canvas.height - pad * 2) / spanY;
         const scale = Math.min(scaleX, scaleY);
         const offsetX = (canvas.width - spanX * scale) / 2;
         const offsetY = (canvas.height - spanY * scale) / 2;
+        const previewSourcePoints = filterPointsToBounds(stats.sampled, previewBounds);
+        const hasRgb = Boolean(stats.hasRgb && previewSourcePoints.some((point) => (
+          Number.isFinite(point.red) && Number.isFinite(point.green) && Number.isFinite(point.blue)
+        )));
 
-        const gridCols = 120;
-        const gridRows = 74;
-        const density = Array.from({ length: gridRows }, () => Array(gridCols).fill(0));
-        const sourcePoints = stats.groundSampled && stats.groundSampled.length >= 3 ? stats.groundSampled : stats.sampled;
-        for (const p of sourcePoints) {
-          const x = offsetX + (p.x - stats.minX) * scale;
-          const y = canvas.height - (offsetY + (p.y - stats.minY) * scale);
-          const col = Math.max(0, Math.min(gridCols - 1, Math.floor((x / canvas.width) * gridCols)));
-          const row = Math.max(0, Math.min(gridRows - 1, Math.floor((y / canvas.height) * gridRows)));
-          density[row][col] += 1;
-        }
-
-        let maxCell = 0;
-        for (const row of density) {
-          for (const count of row) {
-            if (count > maxCell) maxCell = count;
+        if (hasRgb) {
+          projectionLayerEl.dataset.viewLabel = "2D 真彩点云底图";
+          const cellsRed = new Float32Array(previewRasterWidth * previewRasterHeight);
+          const cellsGreen = new Float32Array(previewRasterWidth * previewRasterHeight);
+          const cellsBlue = new Float32Array(previewRasterWidth * previewRasterHeight);
+          const cellsCount = new Uint32Array(previewRasterWidth * previewRasterHeight);
+          for (const p of previewSourcePoints) {
+            const col = Math.max(0, Math.min(previewRasterWidth - 1, Math.floor(((p.x - previewBounds.minX) / spanX) * previewRasterWidth)));
+            const row = Math.max(0, Math.min(previewRasterHeight - 1, Math.floor((1 - ((p.y - previewBounds.minY) / spanY)) * previewRasterHeight)));
+            const index = row * previewRasterWidth + col;
+            if (index < 0 || index >= cellsCount.length) continue;
+            cellsCount[index] += 1;
+            const densityBoost = Math.min(1, cellsCount[index] / 5);
+            const weight = 0.6 + densityBoost * 0.4;
+            const red = Number.isFinite(p.red) ? p.red : 255;
+            const green = Number.isFinite(p.green) ? p.green : 255;
+            const blue = Number.isFinite(p.blue) ? p.blue : 255;
+            cellsRed[index] += red * weight;
+            cellsGreen[index] += green * weight;
+            cellsBlue[index] += blue * weight;
           }
-        }
 
-        const cellWidth = canvas.width / gridCols;
-        const cellHeight = canvas.height / gridRows;
-        for (let row = 0; row < gridRows; row += 1) {
-          for (let col = 0; col < gridCols; col += 1) {
-            const count = density[row][col];
-            if (count <= 0) continue;
-            const ratio = Math.min(1, count / Math.max(maxCell, 1));
-            const zBias = 0.08 + ratio * 0.52;
-            const lightness = 76 - ratio * 26;
-            ctx.fillStyle = "hsla(168, 45%, " + lightness.toFixed(1) + "%, " + zBias.toFixed(3) + ")";
-            ctx.fillRect(col * cellWidth, row * cellHeight, cellWidth + 1, cellHeight + 1);
+          const sourceCanvas = document.createElement("canvas");
+          sourceCanvas.width = previewRasterWidth;
+          sourceCanvas.height = previewRasterHeight;
+          const sourceCtx = sourceCanvas.getContext("2d");
+          if (!sourceCtx) throw new Error("canvas_unavailable");
+          const imageData = sourceCtx.createImageData(previewRasterWidth, previewRasterHeight);
+          const pixels = imageData.data;
+          for (let i = 0; i < cellsCount.length; i += 1) {
+            const count = cellsCount[i];
+            if (count === 0) continue;
+            const pixelOffset = i * 4;
+            const density = Math.min(1, count / 10);
+            pixels[pixelOffset] = Math.max(0, Math.min(255, Math.round(cellsRed[i] / count)));
+            pixels[pixelOffset + 1] = Math.max(0, Math.min(255, Math.round(cellsGreen[i] / count)));
+            pixels[pixelOffset + 2] = Math.max(0, Math.min(255, Math.round(cellsBlue[i] / count)));
+            pixels[pixelOffset + 3] = Math.round(165 + density * 90);
           }
+          sourceCtx.putImageData(imageData, 0, 0);
+          ctx.fillStyle = "#f3efe6";
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          ctx.imageSmoothingEnabled = true;
+          ctx.drawImage(sourceCanvas, 0, 0, canvas.width, canvas.height);
+          projectionLayerEl.style.backgroundColor = "";
+        } else {
+          projectionLayerEl.dataset.viewLabel = "2D 地面密度底图";
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          ctx.fillStyle = "#ece7dd";
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+          const gridCols = 220;
+          const gridRows = 136;
+          const density = Array.from({ length: gridRows }, () => Array(gridCols).fill(0));
+          const zSum = Array.from({ length: gridRows }, () => Array(gridCols).fill(0));
+          for (const p of previewSourcePoints) {
+            const col = Math.max(0, Math.min(gridCols - 1, Math.floor(((p.x - previewBounds.minX) / spanX) * gridCols)));
+            const row = Math.max(0, Math.min(gridRows - 1, Math.floor((1 - ((p.y - previewBounds.minY) / spanY)) * gridRows)));
+            density[row][col] += 1;
+            zSum[row][col] += p.z;
+          }
+
+          let maxCell = 0;
+          for (const row of density) {
+            for (const count of row) {
+              if (count > maxCell) maxCell = count;
+            }
+          }
+
+          const cellWidth = canvas.width / gridCols;
+          const cellHeight = canvas.height / gridRows;
+          const spanZ = Math.max(stats.maxZ - stats.minZ, 1e-6);
+          for (let row = 0; row < gridRows; row += 1) {
+            for (let col = 0; col < gridCols; col += 1) {
+              const count = density[row][col];
+              if (count <= 0) continue;
+              const ratio = Math.min(1, count / Math.max(maxCell, 1));
+              const avgZ = zSum[row][col] / count;
+              const zRatio = Math.max(0, Math.min(1, (avgZ - stats.minZ) / spanZ));
+              const hue = 85 + zRatio * 110;
+              const saturation = 28 + ratio * 24;
+              const lightness = 78 - ratio * 32;
+              ctx.fillStyle = "hsla(" + hue.toFixed(1) + ", " + saturation.toFixed(1) + "%, " + lightness.toFixed(1) + "%, " + (0.16 + ratio * 0.76).toFixed(3) + ")";
+              ctx.fillRect(col * cellWidth, row * cellHeight, cellWidth + 1, cellHeight + 1);
+            }
+          }
+          projectionLayerEl.style.backgroundColor = "";
         }
 
         projectionLayerEl.style.backgroundImage = 'url("' + canvas.toDataURL("image/png") + '")';
@@ -1346,7 +1593,8 @@
           canvasHeight: canvas.height,
           scale,
           offsetX,
-          offsetY
+          offsetY,
+          worldBounds: previewBounds
         };
         mapPlaceholderEl.style.display = "none";
         resetViewTransform();
@@ -1373,6 +1621,7 @@
       }
 
       function applyProjectionBackgroundImage(src) {
+        projectionLayerEl.dataset.viewLabel = "2D 高质量真彩点云底图";
         projectionLayerEl.style.backgroundImage = 'url("' + src + '")';
         projectionLayerEl.style.backgroundSize = "contain";
         projectionLayerEl.style.backgroundRepeat = "no-repeat";
@@ -1382,17 +1631,126 @@
         resetViewTransform();
       }
 
+      async function loadGeneratedTopviewBundle(bundle, file) {
+        setTaskProgress(86, "底图文件已生成，正在读取元数据");
+        const metadata = await fetchJsonNoStore(operatorApiBase + bundle.metadata_url);
+
+        setTaskProgress(94, "元数据已读取，正在加载高质量真彩底图");
+        const imageUrl = withCacheBust(operatorApiBase + bundle.topview_truecolor_url);
+        await new Promise((resolve, reject) => {
+          const image = new Image();
+          image.onload = () => resolve();
+          image.onerror = () => reject(new Error("generated_topview_load_failed"));
+          image.src = imageUrl;
+        });
+
+        applyProjectionBackgroundImage(imageUrl);
+        updateTopviewMetadataStats(metadata);
+        currentGeneratedBundle = bundle;
+        currentPointCloudStats = null;
+        currentMapContext = {
+          mode: "generated_topview",
+          fileName: file.name || "unknown",
+          address: null,
+          imageWidth: metadata.crop_image && metadata.crop_image.width ? metadata.crop_image.width : overlayViewWidth,
+          imageHeight: metadata.crop_image && metadata.crop_image.height ? metadata.crop_image.height : overlayViewHeight,
+          worldBounds: metadata.world_bounds || null,
+          bundle
+        };
+        boundaryDraftPoints = [];
+        boundaryClosedShape = null;
+        candidateBoundaryPoints = [];
+        candidateSeedPoint = null;
+        renderBoundary();
+        renderCandidateBoundary();
+        resetNoGoDrawing(true);
+        resetCorridorDrawing(true);
+        setActiveTool("");
+        resetSteps();
+        setStepState("queued", "done");
+        setStepState("parsing", "done");
+        setStepState("done", "done");
+        setBadge("完成", "success");
+        setTaskProgress(100, "高质量点云底图已生成完成");
+        taskSummaryEl.textContent = "高质量底图已就绪";
+        statusEl.textContent = "状态：高质量底图已生成，请输入住宅地址进行下一步裁剪";
+        addressHintEl.textContent = "底图已生成完成。下一步输入住宅地址，再做住宅范围切割。";
+      }
+
+      async function pollTopviewJob(jobId, file) {
+        activeTopviewJobId = jobId;
+        while (activeTopviewJobId === jobId) {
+          const job = await fetchJsonNoStore(operatorApiBase + "/api/operator/topview-jobs/" + jobId);
+          setTaskProgress(job.progress || 0, job.message || "高质量底图生成中");
+
+          if (job.status === "failed") {
+            setBadge("失败", "error");
+            taskSummaryEl.textContent = "高质量底图生成失败";
+            statusEl.textContent = "状态：" + (job.message || "高质量底图生成失败");
+            addressHintEl.textContent = "请检查本地生成服务和点云文件，再重试。";
+            setStepState("parsing", "error");
+            return;
+          }
+
+          if (job.status === "succeeded" && job.bundle) {
+            await loadGeneratedTopviewBundle(job.bundle, file);
+            return;
+          }
+
+          await new Promise((resolve) => window.setTimeout(resolve, 1200));
+        }
+      }
+
+      async function startHighQualityTopviewGeneration(file) {
+        activeTopviewJobId = "";
+        currentGeneratedBundle = null;
+        resetSteps();
+        resetBoundaryDrawing();
+        resetNoGoDrawing(true);
+        resetCorridorDrawing(true);
+        resetCandidateBoundary();
+        projectionLayerEl.style.display = "none";
+        projectionLayerEl.style.backgroundImage = "";
+        mapPlaceholderEl.style.display = "grid";
+        currentMapContext = null;
+        currentPointCloudStats = null;
+        setPointCloudStatsEmpty();
+        setBadge("运行中", "running");
+        taskSummaryEl.textContent = "正在上传点云并生成高质量底图";
+        statusEl.textContent = "状态：正在提交点云文件到本地生成服务";
+        setStepState("queued", "active");
+        setTaskProgress(8, "正在上传点云文件");
+        addressHintEl.textContent = "高质量底图生成中，请稍候。生成完成后再输入住宅地址。";
+
+        const formData = new FormData();
+        formData.append("file", file, file.name || "pointcloud.las");
+        const response = await fetch(operatorApiBase + "/api/operator/topview-jobs", {
+          method: "POST",
+          body: formData
+        });
+        if (!response.ok) {
+          throw new Error("upload_failed:" + response.status);
+        }
+        const payload = await response.json();
+        setStepState("queued", "done");
+        setStepState("parsing", "active");
+        taskSummaryEl.textContent = "高质量底图生成中";
+        statusEl.textContent = "状态：本地生成任务已启动";
+        await pollTopviewJob(payload.job_id, file);
+      }
+
       async function loadRegisteredSampleBundle(sample, file) {
-        const [parcelMeta, lawnReview] = await Promise.all([
-          fetch(sample.assets.parcelMeta, { cache: "no-store" }).then((res) => {
-            if (!res.ok) throw new Error("parcel_meta_fetch_failed");
-            return res.json();
-          }),
-          fetch(sample.assets.lawnReview, { cache: "no-store" }).then((res) => {
-            if (!res.ok) throw new Error("lawn_review_fetch_failed");
-            return res.json();
-          })
-        ]);
+        setTaskProgress(18, "已匹配住宅地址，正在读取住宅图元数据");
+        const parcelMeta = await fetch(sample.assets.parcelMeta, { cache: "no-store" }).then((res) => {
+          if (!res.ok) throw new Error("parcel_meta_fetch_failed");
+          return res.json();
+        });
+
+        setTaskProgress(42, "住宅图元数据已读取，正在读取草坪初稿");
+        const lawnReview = await fetch(sample.assets.lawnReview, { cache: "no-store" }).then((res) => {
+          if (!res.ok) throw new Error("lawn_review_fetch_failed");
+          return res.json();
+        });
 
         const imageWidth = Number(parcelMeta.image && parcelMeta.image.width) || 1600;
         const imageHeight = Number(parcelMeta.image && parcelMeta.image.height) || 2340;
@@ -1405,7 +1763,16 @@
           overlayViewHeight
         ));
 
+        setTaskProgress(68, "草坪初稿已读取，正在加载高质量底图");
+        await new Promise((resolve, reject) => {
+          const image = new Image();
+          image.onload = () => resolve();
+          image.onerror = () => reject(new Error("parcel_image_load_failed"));
+          image.src = sample.assets.parcelImage + "?t=" + Date.now();
+        });
+
         applyProjectionBackgroundImage(sample.assets.parcelImage);
+        setTaskProgress(86, "高质量底图已加载，正在渲染可编辑边界");
         currentMapContext = {
           mode: "registered_sample",
           fileName: file.name || sample.fileName,
@@ -1440,9 +1807,10 @@
         setStepState("parsing", "done");
         setStepState("done", "done");
         setBadge("完成", "success");
+        setTaskProgress(100, "高质量底图、草坪初稿和可编辑边界已就绪");
         taskSummaryEl.textContent = "已生成真彩点云底图与草坪初稿";
         statusEl.textContent = "状态：已加载真彩点云底图，可直接拖拽微调草坪边界";
-        addressHintEl.textContent = "当前使用已注册样例流程：草坪初稿直接基于真彩点云底图生成，后续可继续微调。";
+        addressHintEl.textContent = "当前加载的是离线高质量生成图，草坪初稿可在此基础上继续微调。";
       }
 
       async function runAddressPipeline(file) {
@@ -1460,18 +1828,27 @@
 
         const ext = detectExt(file.name || "");
         const sample = findRegisteredSample(file.name || "", address);
-        resetCandidateBoundary();
+
+        if (currentGeneratedBundle && !sample) {
+          setBadge("待下一步", "");
+          taskSummaryEl.textContent = "高质量底图已就绪，等待住宅裁剪";
+          statusEl.textContent = "状态：当前版本已完成底图生成，下一步将接住宅地址裁剪";
+          addressHintEl.textContent = "底图已经正确生成。下一步开发的是基于地址与官方边界裁剪当前住宅区域。";
+          return;
+        }
 
         if (sample) {
           setBadge("运行中", "running");
           taskSummaryEl.textContent = "正在加载 Council 裁剪图与草坪初稿";
           setStepState("queued", "active");
+          setTaskProgress(8, "正在匹配住宅地址");
           statusEl.textContent = "状态：正在匹配已注册住宅样例";
           try {
             await loadRegisteredSampleBundle(sample, file);
             return;
           } catch (error) {
             setBadge("失败", "error");
+            setTaskProgress(100, "高质量工件加载失败，请检查样例文件是否完整");
             taskSummaryEl.textContent = "样例工件加载失败";
             statusEl.textContent = "状态：已识别样例，但本地工件加载失败";
             addressHintEl.textContent = "已匹配样例地址，但相关裁剪图/草坪工件未成功读取。";
@@ -1479,9 +1856,17 @@
           }
         }
 
-        addressHintEl.textContent = "当前地址尚未接入 Council 裁剪流程，先回退到本地点云解析视图。";
-        statusEl.textContent = "状态：当前地址未注册，先显示本地点云底图";
-        await beginRealParseFlow(file, ext);
+        resetSteps();
+        setBadge("待生成", "");
+        setTaskProgress(0, "当前住宅还没有高质量生成结果");
+        taskSummaryEl.textContent = "缺少高质量生成工件";
+        statusEl.textContent = "状态：当前住宅尚未生成高质量底图，请先运行离线生成管线";
+        addressHintEl.textContent = "操作员流程不使用浏览器低质量预览。请先用 scripts/render_topview.py 生成 topview_truecolor.png 等工件，再回到页面加载。";
+        projectionLayerEl.style.display = "none";
+        projectionLayerEl.style.backgroundImage = "";
+        mapPlaceholderEl.style.display = "grid";
+        currentMapContext = null;
+        currentPointCloudStats = null;
       }
 
       function setStepState(step, state) {
@@ -1493,6 +1878,10 @@
 
       function resetSteps() {
         ["queued", "parsing", "done"].forEach((step) => setStepState(step, ""));
+      }
+
+      function resetTaskProgress(text = "当前未开始高质量生成任务") {
+        setTaskProgress(0, text);
       }
 
       function setActiveTool(tool) {
@@ -2030,7 +2419,7 @@
         }, 800);
       }
 
-      async function beginRealParseFlow(file, ext) {
+      async function loadPointCloudPreview(file, ext) {
         if (mockParseTimer) {
           clearTimeout(mockParseTimer);
           mockParseTimer = null;
@@ -2041,15 +2430,15 @@
         resetNoGoDrawing(true);
         resetCorridorDrawing(true);
         resetCandidateBoundary();
-        setPointCloudStatsEmpty();
         setBadge("运行中", "running");
-        taskSummaryEl.textContent = "任务已创建，等待解析";
+        taskSummaryEl.textContent = "任务已创建，正在生成俯视图";
         setStepState("queued", "active");
-        statusEl.textContent = "状态：任务排队中";
+        statusEl.textContent = "状态：任务排队中，正在生成清晰俯视图";
         projectionLayerEl.style.display = "none";
         projectionLayerEl.style.backgroundImage = "";
         mapPlaceholderEl.style.display = "grid";
         currentMapContext = null;
+        currentPointCloudStats = null;
 
         await new Promise((resolve) => {
           window.setTimeout(resolve, 120);
@@ -2057,8 +2446,8 @@
 
         setStepState("queued", "done");
         setStepState("parsing", "active");
-        taskSummaryEl.textContent = "正在读取点云、提取地面层并生成 2D 投影";
-        statusEl.textContent = "状态：解析中（真实点云 + 地面层）";
+        taskSummaryEl.textContent = "正在读取点云并生成清晰俯视图";
+        statusEl.textContent = "状态：解析中（生成俯视图）";
 
         try {
           if (!parserReadyTypes.has(ext)) {
@@ -2075,13 +2464,19 @@
           }
           updatePointCloudStats(stats);
           renderProjectionFromPoints(stats);
+          currentPointCloudStats = stats;
           currentMapContext = {
-            mode: "parsed_pointcloud",
+            mode: "preview_pointcloud",
             fileName: file.name || "unknown",
             address: addressInputEl.value.trim() || null,
-            imageWidth: overlayViewWidth,
-            imageHeight: overlayViewHeight,
-            worldBounds: {
+            imageWidth: projectionLayerEl._projectionInfo ? projectionLayerEl._projectionInfo.canvasWidth : overlayViewWidth,
+            imageHeight: projectionLayerEl._projectionInfo ? projectionLayerEl._projectionInfo.canvasHeight : overlayViewHeight,
+            worldBounds: stats.previewWorldBounds ? {
+              x_min: stats.previewWorldBounds.minX,
+              x_max: stats.previewWorldBounds.maxX,
+              y_min: stats.previewWorldBounds.minY,
+              y_max: stats.previewWorldBounds.maxY
+            } : {
               x_min: stats.minX,
               x_max: stats.maxX,
               y_min: stats.minY,
@@ -2089,25 +2484,20 @@
             },
             projection: projectionLayerEl._projectionInfo || null
           };
-          candidateBoundaryPoints = buildCandidateBoundary(stats, null);
-          renderCandidateBoundary();
 
           setStepState("parsing", "done");
-          setStepState("done", "done");
-          setBadge("完成", "success");
-          taskSummaryEl.textContent = candidateBoundaryPoints.length >= 3
-            ? "真实点云解析完成，已基于地面层生成候选草坪范围"
-            : "真实点云解析完成，地面层未形成可靠候选范围";
-          statusEl.textContent = candidateBoundaryPoints.length >= 3
-            ? "状态：已基于地面层生成候选范围，可接受或手动微调"
-            : "状态：地面底图已生成，请手动勾画草坪范围";
-          setActiveTool("boundary");
+          setStepState("done", "");
+          setBadge("待地址", "");
+          taskSummaryEl.textContent = "俯视图已生成，等待输入住宅地址";
+          statusEl.textContent = "状态：俯视图已生成，请输入住宅地址以截取住宅范围并自动识别草坪";
+          addressHintEl.textContent = "俯视图已就绪。输入住宅地址后，系统会先截取住宅范围，再自动识别草坪边界。";
           return;
         } catch (error) {
           resetBoundaryDrawing();
           resetNoGoDrawing(true);
           resetCorridorDrawing(true);
           resetCandidateBoundary();
+          currentPointCloudStats = null;
           projectionLayerEl.style.display = "none";
           projectionLayerEl.style.backgroundImage = "";
           mapPlaceholderEl.style.display = "grid";
@@ -2144,6 +2534,34 @@
           taskSummaryEl.textContent = "点云解析失败";
           statusEl.textContent = "状态：点云解析失败，请检查文件格式";
         }
+      }
+
+      function finalizePreviewWithAddress(file) {
+        if (!currentPointCloudStats) return false;
+
+        resetCandidateBoundary();
+        currentMapContext = {
+          mode: "parsed_pointcloud",
+          fileName: file.name || "unknown",
+          address: addressInputEl.value.trim() || null,
+          imageWidth: overlayViewWidth,
+          imageHeight: overlayViewHeight,
+          worldBounds: currentPointCloudStats.previewWorldBounds ? {
+            x_min: currentPointCloudStats.previewWorldBounds.minX,
+            x_max: currentPointCloudStats.previewWorldBounds.maxX,
+            y_min: currentPointCloudStats.previewWorldBounds.minY,
+            y_max: currentPointCloudStats.previewWorldBounds.maxY
+          } : {
+            x_min: currentPointCloudStats.minX,
+            x_max: currentPointCloudStats.maxX,
+            y_min: currentPointCloudStats.minY,
+            y_max: currentPointCloudStats.maxY
+          },
+          projection: projectionLayerEl._projectionInfo || null
+        };
+        candidateBoundaryPoints = buildCandidateBoundary(currentPointCloudStats, null);
+        renderCandidateBoundary();
+        return true;
       }
 
       function getOverlayPoint(evt) {
@@ -2553,16 +2971,35 @@
           return;
         }
 
-        if (file.size >= largeFileThresholdBytes) {
-          statusEl.textContent = "状态：已载入大文件（解析可能较慢）";
-        }
-        if (file.size < largeFileThresholdBytes) {
-          statusEl.textContent = "状态：已载入文件，请输入住宅地址后生成住宅图";
-        }
-        taskSummaryEl.textContent = "文件已载入，等待住宅地址";
+        statusEl.textContent = "状态：已载入点云，请输入住宅地址并生成高质量底图";
+        taskSummaryEl.textContent = "文件已载入，准备生成高质量底图";
         resetSteps();
         setBadge("待开始", "");
-        addressHintEl.textContent = "文件已载入。输入住宅地址后点击“生成住宅图”，系统会优先加载 Council 裁剪流程。";
+        resetTaskProgress("点云文件已载入，准备启动高质量生成流程");
+        setPointCloudStatsEmpty();
+        resetBoundaryDrawing();
+        resetNoGoDrawing(true);
+        resetCorridorDrawing(true);
+        resetCandidateBoundary();
+        setActiveTool("");
+        projectionLayerEl.style.display = "none";
+        projectionLayerEl.style.backgroundImage = "";
+        mapPlaceholderEl.style.display = "grid";
+        currentMapContext = null;
+        currentPointCloudStats = null;
+        currentGeneratedBundle = null;
+        addressHintEl.textContent = "文件已载入。当前为操作员高质量流程：先自动生成底图，生成完成后再输入地址裁剪。";
+        try {
+          await startHighQualityTopviewGeneration(file);
+        } catch (error) {
+          resetSteps();
+          setStepState("parsing", "error");
+          setBadge("失败", "error");
+          taskSummaryEl.textContent = "高质量底图生成失败";
+          statusEl.textContent = "状态：无法连接本地生成服务，请先启动 operator server";
+          addressHintEl.textContent = "请先启动 `scripts/operator_server.py`，然后重新导入点云文件。";
+          setTaskProgress(100, "高质量底图生成失败");
+        }
         })();
       });
 
@@ -2585,6 +3022,7 @@
         statusEl.textContent = "状态：视图已复位";
       });
 
+      resetTaskProgress();
       applyViewTransform();
     </script>
   </body>
