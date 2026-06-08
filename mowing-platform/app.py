@@ -31,10 +31,42 @@ def timestamp() -> str:
 
 
 WORKERS = [
-    {"id": "w-001", "name": "张师傅", "area": "North Shore", "available": True},
-    {"id": "w-002", "name": "李师傅", "area": "Mt Eden / Epsom", "available": True},
-    {"id": "w-003", "name": "王师傅", "area": "Howick / Botany", "available": False},
-    {"id": "w-004", "name": "陈师傅", "area": "Henderson / Westgate", "available": True},
+    {
+        "id": "w-001",
+        "name": "张师傅",
+        "area": "North Shore",
+        "phone": "021-900-1001",
+        "approvalStatus": "approved",
+        "serviceNote": "擅长大面积主体割草后的边缘收尾，适合北岸独立屋。",
+        "available": True,
+    },
+    {
+        "id": "w-002",
+        "name": "李师傅",
+        "area": "Mt Eden / Epsom",
+        "phone": "021-900-1002",
+        "approvalStatus": "approved",
+        "serviceNote": "擅长规则草坪和花坛边人工修整，沟通响应快。",
+        "available": True,
+    },
+    {
+        "id": "w-003",
+        "name": "王师傅",
+        "area": "Howick / Botany",
+        "phone": "021-900-1003",
+        "approvalStatus": "probation",
+        "serviceNote": "当前以东区订单为主，复杂院落需要平台先复核照片。",
+        "available": False,
+    },
+    {
+        "id": "w-004",
+        "name": "陈师傅",
+        "area": "Henderson / Westgate",
+        "phone": "021-900-1004",
+        "approvalStatus": "approved",
+        "serviceNote": "西区订单经验较多，树下和墙边补刀处理稳定。",
+        "available": True,
+    },
 ]
 
 SEED_ORDERS = [
@@ -155,6 +187,14 @@ class WorkerAvailabilityPayload(BaseModel):
     available: bool
 
 
+class WorkerProfilePayload(BaseModel):
+    name: str = Field(min_length=1)
+    phone: str = Field(min_length=1)
+    area: str = Field(min_length=1)
+    approvalStatus: str = Field(min_length=1)
+    serviceNote: str = ""
+
+
 @dataclass
 class StoreStatus:
     mode: str
@@ -177,6 +217,17 @@ class InMemoryStore:
         for worker in self.workers:
             if worker["id"] == worker_id:
                 worker["available"] = available
+                return worker
+        raise HTTPException(status_code=404, detail="Worker not found")
+
+    def update_worker_profile(self, worker_id: str, payload: WorkerProfilePayload) -> dict[str, Any]:
+        for worker in self.workers:
+            if worker["id"] == worker_id:
+                worker["name"] = payload.name
+                worker["phone"] = payload.phone
+                worker["area"] = payload.area
+                worker["approvalStatus"] = payload.approvalStatus
+                worker["serviceNote"] = payload.serviceNote
                 return worker
         raise HTTPException(status_code=404, detail="Worker not found")
 
@@ -293,19 +344,43 @@ class PostgresStore:
         with self._connect() as conn:
             with conn.cursor() as cur:
                 cur.execute(self.schema_sql)
-                cur.execute("select count(*) from mowing_workers")
-                if cur.fetchone()[0] == 0:
-                    cur.executemany(
-                        """
-                        insert into mowing_workers (id, name, area, available)
-                        values (%(id)s, %(name)s, %(area)s, %(available)s)
-                        """,
-                        WORKERS,
-                    )
+                self._upsert_seed_workers(cur)
                 cur.execute("select count(*) from mowing_orders")
                 if cur.fetchone()[0] == 0:
                     self._seed_orders(cur)
             conn.commit()
+
+    def _upsert_seed_workers(self, cur) -> None:
+        cur.executemany(
+            """
+            insert into mowing_workers (id, name, area, phone, approval_status, service_note, available)
+            values (
+                %(id)s, %(name)s, %(area)s, %(phone)s, %(approvalStatus)s, %(serviceNote)s, %(available)s
+            )
+            on conflict (id) do update set
+                name = case
+                    when coalesce(nullif(mowing_workers.name, ''), '') = '' then excluded.name
+                    else mowing_workers.name
+                end,
+                area = case
+                    when coalesce(nullif(mowing_workers.area, ''), '') = '' then excluded.area
+                    else mowing_workers.area
+                end,
+                phone = case
+                    when coalesce(nullif(mowing_workers.phone, ''), '') = '' then excluded.phone
+                    else mowing_workers.phone
+                end,
+                approval_status = case
+                    when coalesce(nullif(mowing_workers.approval_status, ''), '') = '' then excluded.approval_status
+                    else mowing_workers.approval_status
+                end,
+                service_note = case
+                    when coalesce(nullif(mowing_workers.service_note, ''), '') = '' then excluded.service_note
+                    else mowing_workers.service_note
+                end
+            """,
+            WORKERS,
+        )
 
     def _seed_orders(self, cur) -> None:
         for order in SEED_ORDERS:
@@ -343,11 +418,14 @@ class PostgresStore:
                     """
                 )
                 orders = [self._row_to_order(row) for row in cur.fetchall()]
-                cur.execute("select id, name, area, available from mowing_workers order by id")
-                workers = [
-                    {"id": row[0], "name": row[1], "area": row[2], "available": row[3]}
-                    for row in cur.fetchall()
-                ]
+                cur.execute(
+                    """
+                    select id, name, area, phone, approval_status, service_note, available
+                    from mowing_workers
+                    order by id
+                    """
+                )
+                workers = [self._row_to_worker(row) for row in cur.fetchall()]
         return {"orders": orders, "workers": workers}
 
     def update_worker_availability(self, worker_id: str, available: bool) -> dict[str, Any]:
@@ -358,7 +436,7 @@ class PostgresStore:
                     update mowing_workers
                     set available = %s
                     where id = %s
-                    returning id, name, area, available
+                    returning id, name, area, phone, approval_status, service_note, available
                     """,
                     (available, worker_id),
                 )
@@ -366,7 +444,36 @@ class PostgresStore:
                 if row is None:
                     raise HTTPException(status_code=404, detail="Worker not found")
             conn.commit()
-        return {"id": row[0], "name": row[1], "area": row[2], "available": row[3]}
+        return self._row_to_worker(row)
+
+    def update_worker_profile(self, worker_id: str, payload: WorkerProfilePayload) -> dict[str, Any]:
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    update mowing_workers
+                    set name = %s,
+                        phone = %s,
+                        area = %s,
+                        approval_status = %s,
+                        service_note = %s
+                    where id = %s
+                    returning id, name, area, phone, approval_status, service_note, available
+                    """,
+                    (
+                        payload.name,
+                        payload.phone,
+                        payload.area,
+                        payload.approvalStatus,
+                        payload.serviceNote,
+                        worker_id,
+                    ),
+                )
+                row = cur.fetchone()
+                if row is None:
+                    raise HTTPException(status_code=404, detail="Worker not found")
+            conn.commit()
+        return self._row_to_worker(row)
 
     def _next_order_id(self) -> str:
         with self._connect() as conn:
@@ -402,6 +509,18 @@ class PostgresStore:
             "updatedAt": row[13].strftime("%Y-%m-%d %H:%M"),
             "photos": photos,
             "activity": activity,
+        }
+
+    @staticmethod
+    def _row_to_worker(row: tuple[Any, ...]) -> dict[str, Any]:
+        return {
+            "id": row[0],
+            "name": row[1],
+            "area": row[2],
+            "phone": row[3] or "",
+            "approvalStatus": row[4] or "approved",
+            "serviceNote": row[5] or "",
+            "available": row[6],
         }
 
     def save_quote(self, order_id: str, price: str, price_note: str) -> dict[str, Any]:
@@ -702,4 +821,10 @@ def accept_order(order_id: str) -> dict[str, Any]:
 @app.post("/api/workers/{worker_id}/availability")
 def update_worker_availability(worker_id: str, payload: WorkerAvailabilityPayload) -> dict[str, Any]:
     worker = service.store.update_worker_availability(worker_id, payload.available)
+    return {"worker": worker, **service.bootstrap()}
+
+
+@app.post("/api/workers/{worker_id}/profile")
+def update_worker_profile(worker_id: str, payload: WorkerProfilePayload) -> dict[str, Any]:
+    worker = service.store.update_worker_profile(worker_id, payload)
     return {"worker": worker, **service.bootstrap()}

@@ -2,9 +2,16 @@ create table if not exists mowing_workers (
     id text primary key,
     name text not null,
     area text not null,
+    phone text not null default '',
+    approval_status text not null default 'approved',
+    service_note text not null default '',
     available boolean not null default true,
     created_at timestamptz not null default now()
 );
+
+alter table if exists mowing_workers add column if not exists phone text not null default '';
+alter table if exists mowing_workers add column if not exists approval_status text not null default 'approved';
+alter table if exists mowing_workers add column if not exists service_note text not null default '';
 
 create table if not exists mowing_orders (
     id text primary key,

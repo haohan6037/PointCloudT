@@ -6,6 +6,12 @@ const statusLabels = {
   cancelled: "已取消",
 };
 
+const workerApprovalLabels = {
+  approved: "已审核",
+  probation: "观察中",
+  pending_info: "资料待补充",
+};
+
 let orders = [];
 let workers = [];
 let selectedId = "";
@@ -21,6 +27,8 @@ const dataMode = document.getElementById("dataMode");
 const dataHint = document.getElementById("dataHint");
 const orderModal = document.getElementById("orderModal");
 const createOrderForm = document.getElementById("createOrderForm");
+const workerModal = document.getElementById("workerModal");
+const workerProfileForm = document.getElementById("workerProfileForm");
 const workersView = document.getElementById("workersView");
 const ordersView = document.getElementById("ordersView");
 const metricsSection = document.getElementById("metricsSection");
@@ -34,6 +42,10 @@ function money(value) {
 function workerName(id) {
   const worker = workers.find((item) => item.id === id);
   return worker ? worker.name : "未派单";
+}
+
+function workerApprovalLabel(status) {
+  return workerApprovalLabels[status] || "待确认";
 }
 
 function selectedOrder() {
@@ -231,9 +243,16 @@ function renderWorkersView() {
       (worker) => `
         <article class="worker-card">
           <div class="worker-head">
-            <div>
-              <h3>${worker.name}</h3>
-              <p>${worker.id}</p>
+            <div class="worker-headline">
+              <div>
+                <h3>${worker.name}</h3>
+                <p>${worker.id}</p>
+              </div>
+              <div class="worker-actions">
+                <span class="worker-badge ${worker.approvalStatus || "approved"}">
+                  ${workerApprovalLabel(worker.approvalStatus)}
+                </span>
+              </div>
             </div>
             <span class="worker-badge ${worker.available ? "available" : "unavailable"}">
               ${worker.available ? "可接单" : "暂停接单"}
@@ -241,9 +260,14 @@ function renderWorkersView() {
           </div>
           <div class="worker-meta">
             <div><span>服务区域</span><br /><strong>${worker.area}</strong></div>
+            <div><span>联系电话</span><br /><strong>${worker.phone || "待补充"}</strong></div>
             <div><span>当前状态</span><br /><strong>${worker.available ? "平台可派单" : "暂不参与派单"}</strong></div>
           </div>
+          <p class="worker-note">${worker.serviceNote || "暂无派单备注"}</p>
           <div class="worker-actions">
+            <button class="btn" type="button" data-worker-edit="${worker.id}">
+              编辑资料
+            </button>
             <button class="btn ${worker.available ? "" : "primary"}" type="button" data-worker-action="enable" data-worker-id="${worker.id}">
               恢复接单
             </button>
@@ -267,6 +291,10 @@ function renderWorkersView() {
         alert(error.message);
       }
     });
+  });
+
+  workersView.querySelectorAll("[data-worker-edit]").forEach((button) => {
+    button.addEventListener("click", () => openWorkerModal(button.dataset.workerEdit));
   });
 }
 
@@ -306,6 +334,29 @@ function openOrderModal() {
 function closeOrderModal() {
   orderModal.classList.remove("open");
   orderModal.setAttribute("aria-hidden", "true");
+}
+
+function openWorkerModal(workerId) {
+  const worker = workers.find((item) => item.id === workerId);
+  if (!worker) {
+    return;
+  }
+  workerProfileForm.dataset.workerId = worker.id;
+  workerProfileForm.elements.name.value = worker.name || "";
+  workerProfileForm.elements.phone.value = worker.phone || "";
+  workerProfileForm.elements.area.value = worker.area || "";
+  workerProfileForm.elements.approvalStatus.value = worker.approvalStatus || "approved";
+  workerProfileForm.elements.serviceNote.value = worker.serviceNote || "";
+  workerModal.classList.add("open");
+  workerModal.setAttribute("aria-hidden", "false");
+  document.getElementById("workerName").focus();
+}
+
+function closeWorkerModal() {
+  workerModal.classList.remove("open");
+  workerModal.setAttribute("aria-hidden", "true");
+  workerProfileForm.reset();
+  delete workerProfileForm.dataset.workerId;
 }
 
 function hydrate(payload) {
@@ -411,6 +462,14 @@ async function updateWorkerAvailability(workerId, available) {
   hydrate(payload);
 }
 
+async function updateWorkerProfile(workerId, formData) {
+  const payload = await request(`/api/workers/${workerId}/profile`, {
+    method: "POST",
+    body: JSON.stringify(formData),
+  });
+  hydrate(payload);
+}
+
 searchInput.addEventListener("input", renderList);
 statusFilter.addEventListener("change", renderList);
 document.querySelectorAll("[data-view]").forEach((button) => {
@@ -440,6 +499,13 @@ orderModal.addEventListener("click", (event) => {
     closeOrderModal();
   }
 });
+document.getElementById("closeWorkerModalBtn").addEventListener("click", closeWorkerModal);
+document.getElementById("cancelWorkerModalBtn").addEventListener("click", closeWorkerModal);
+workerModal.addEventListener("click", (event) => {
+  if (event.target === workerModal) {
+    closeWorkerModal();
+  }
+});
 createOrderForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const form = new FormData(createOrderForm);
@@ -447,6 +513,21 @@ createOrderForm.addEventListener("submit", async (event) => {
   try {
     await createOrder(payload);
     closeOrderModal();
+  } catch (error) {
+    alert(error.message);
+  }
+});
+workerProfileForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const workerId = workerProfileForm.dataset.workerId;
+  if (!workerId) {
+    return;
+  }
+  const form = new FormData(workerProfileForm);
+  const payload = Object.fromEntries(form.entries());
+  try {
+    await updateWorkerProfile(workerId, payload);
+    closeWorkerModal();
   } catch (error) {
     alert(error.message);
   }
