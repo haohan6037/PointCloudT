@@ -1,0 +1,835 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>割草服务平台后台原型</title>
+    <style>
+      :root {
+        --bg: #f6f7f8;
+        --surface: #ffffff;
+        --surface-soft: #f0f4f3;
+        --ink: #17211f;
+        --muted: #63706d;
+        --line: #d8dfdd;
+        --line-strong: #b9c5c2;
+        --primary: #176b5d;
+        --primary-dark: #0f4f45;
+        --accent: #b65f28;
+        --danger: #a23a3a;
+        --warn: #8a6a14;
+        --shadow: 0 10px 24px rgba(23, 33, 31, 0.08);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        color: var(--ink);
+        background: var(--bg);
+        font-family: "Avenir Next", "PingFang SC", "Noto Sans CJK SC", sans-serif;
+      }
+
+      button,
+      input,
+      select,
+      textarea {
+        font: inherit;
+      }
+
+      .app {
+        min-height: 100vh;
+        display: grid;
+        grid-template-columns: 248px minmax(0, 1fr);
+      }
+
+      .sidebar {
+        background: #1d2d2a;
+        color: #f4faf8;
+        padding: 20px 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+      }
+
+      .brand {
+        display: grid;
+        gap: 4px;
+      }
+
+      .brand h1 {
+        margin: 0;
+        font-size: 22px;
+        letter-spacing: 0;
+      }
+
+      .brand p {
+        margin: 0;
+        color: #b9cfca;
+        font-size: 13px;
+        line-height: 1.5;
+      }
+
+      .nav {
+        display: grid;
+        gap: 8px;
+      }
+
+      .nav button {
+        width: 100%;
+        border: 0;
+        border-radius: 8px;
+        padding: 10px 12px;
+        background: transparent;
+        color: #dcebe8;
+        text-align: left;
+        cursor: pointer;
+      }
+
+      .nav button.active {
+        background: #2d4742;
+        color: #ffffff;
+      }
+
+      .nav button[data-view] {
+        position: relative;
+      }
+
+      .sidebar-note {
+        margin-top: auto;
+        padding: 12px;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-radius: 8px;
+        color: #c7d9d5;
+        font-size: 13px;
+        line-height: 1.55;
+      }
+
+      .main {
+        min-width: 0;
+        display: grid;
+        grid-template-rows: auto auto minmax(0, 1fr);
+      }
+
+      .topbar {
+        background: var(--surface);
+        border-bottom: 1px solid var(--line);
+        padding: 18px 24px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+      }
+
+      .status-strip {
+        margin: 14px 24px 0;
+        padding: 12px 14px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fbfcfc;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        flex-wrap: wrap;
+      }
+
+      .status-copy {
+        min-width: 0;
+      }
+
+      .status-copy strong {
+        display: block;
+        margin-bottom: 4px;
+        font-size: 13px;
+      }
+
+      .status-copy span {
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.45;
+      }
+
+      .status-pill {
+        border-radius: 999px;
+        padding: 5px 10px;
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      .status-pill.postgres {
+        color: #0f4f45;
+        background: #d9f2ec;
+      }
+
+      .status-pill.fallback {
+        color: #6f4e00;
+        background: #fff2c2;
+      }
+
+      .modal-shell {
+        position: fixed;
+        inset: 0;
+        background: rgba(23, 33, 31, 0.38);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+        z-index: 20;
+      }
+
+      .modal-shell.open {
+        display: flex;
+      }
+
+      .modal-card {
+        width: min(720px, 100%);
+        max-height: calc(100vh - 40px);
+        overflow: auto;
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        box-shadow: 0 24px 64px rgba(23, 33, 31, 0.18);
+      }
+
+      .modal-head {
+        padding: 16px 18px;
+        border-bottom: 1px solid var(--line);
+        display: flex;
+        align-items: start;
+        justify-content: space-between;
+        gap: 16px;
+      }
+
+      .modal-head h3 {
+        margin: 0;
+        font-size: 18px;
+      }
+
+      .modal-head p {
+        margin: 6px 0 0;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.5;
+      }
+
+      .modal-body {
+        padding: 18px;
+      }
+
+      .form-layout {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      .field.full {
+        grid-column: 1 / -1;
+      }
+
+      .modal-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+        padding: 0 18px 18px;
+        flex-wrap: wrap;
+      }
+
+      .topbar h2 {
+        margin: 0;
+        font-size: 24px;
+        letter-spacing: 0;
+      }
+
+      .topbar p {
+        margin: 4px 0 0;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .actions {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+
+      .btn {
+        min-height: 38px;
+        border: 1px solid var(--line-strong);
+        background: var(--surface);
+        color: var(--ink);
+        padding: 8px 12px;
+        border-radius: 8px;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        white-space: nowrap;
+      }
+
+      .btn.primary {
+        background: var(--primary);
+        color: #ffffff;
+        border-color: var(--primary);
+      }
+
+      .btn.primary:hover {
+        background: var(--primary-dark);
+      }
+
+      .btn.ghost {
+        background: transparent;
+      }
+
+      .metrics {
+        padding: 16px 24px;
+        display: grid;
+        grid-template-columns: repeat(4, minmax(140px, 1fr));
+        gap: 12px;
+      }
+
+      .metric {
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 14px;
+      }
+
+      .metric span {
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .metric strong {
+        display: block;
+        margin-top: 6px;
+        font-size: 24px;
+      }
+
+      .workspace {
+        min-height: 0;
+        padding: 0 24px 24px;
+        display: grid;
+        grid-template-columns: minmax(420px, 1fr) minmax(360px, 440px);
+        gap: 16px;
+      }
+
+      .workspace.hidden {
+        display: none;
+      }
+
+      .panel {
+        min-height: 0;
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        box-shadow: var(--shadow);
+        overflow: hidden;
+      }
+
+      .panel-head {
+        padding: 14px 16px;
+        border-bottom: 1px solid var(--line);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      .panel-head h3 {
+        margin: 0;
+        font-size: 16px;
+      }
+
+      .filters {
+        padding: 12px 16px;
+        border-bottom: 1px solid var(--line);
+        display: grid;
+        grid-template-columns: minmax(180px, 1fr) 180px;
+        gap: 10px;
+      }
+
+      .input,
+      .select,
+      .textarea {
+        width: 100%;
+        border: 1px solid var(--line-strong);
+        background: #ffffff;
+        border-radius: 8px;
+        padding: 9px 10px;
+        color: var(--ink);
+      }
+
+      .textarea {
+        min-height: 76px;
+        resize: vertical;
+      }
+
+      .order-list {
+        max-height: calc(100vh - 254px);
+        overflow: auto;
+      }
+
+      .order-row {
+        width: 100%;
+        border: 0;
+        border-bottom: 1px solid var(--line);
+        background: #ffffff;
+        padding: 14px 16px;
+        cursor: pointer;
+        text-align: left;
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 10px;
+      }
+
+      .order-row:hover,
+      .order-row.active {
+        background: var(--surface-soft);
+      }
+
+      .order-main {
+        min-width: 0;
+      }
+
+      .order-title {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
+      .order-title strong {
+        font-size: 15px;
+      }
+
+      .order-meta,
+      .detail-grid {
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .order-meta {
+        margin-top: 6px;
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+
+      .price {
+        font-weight: 700;
+        color: var(--primary-dark);
+      }
+
+      .badge {
+        border-radius: 999px;
+        padding: 3px 8px;
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      .badge.pending_review {
+        color: #6f4e00;
+        background: #fff2c2;
+      }
+
+      .badge.quoted {
+        color: #0f4f45;
+        background: #d9f2ec;
+      }
+
+      .badge.assigned {
+        color: #244f7a;
+        background: #dcecff;
+      }
+
+      .badge.accepted_by_worker {
+        color: #305b21;
+        background: #e0f2d8;
+      }
+
+      .badge.cancelled {
+        color: #7a2323;
+        background: #f3dcdc;
+      }
+
+      .detail {
+        max-height: calc(100vh - 176px);
+        overflow: auto;
+      }
+
+      .detail-section {
+        padding: 16px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .detail-section h4 {
+        margin: 0 0 12px;
+        font-size: 14px;
+        color: var(--primary-dark);
+      }
+
+      .detail-grid {
+        display: grid;
+        grid-template-columns: 110px minmax(0, 1fr);
+        gap: 8px 12px;
+      }
+
+      .detail-summary {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 10px;
+      }
+
+      .detail-stat {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fbfcfc;
+        padding: 12px;
+      }
+
+      .detail-stat span {
+        display: block;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .detail-stat strong {
+        display: block;
+        margin-top: 6px;
+        font-size: 16px;
+      }
+
+      .detail-stack {
+        display: grid;
+        gap: 12px;
+      }
+
+      .detail-grid strong {
+        color: var(--ink);
+      }
+
+      .photo-strip {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 8px;
+      }
+
+      .photo {
+        min-height: 92px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background:
+          linear-gradient(135deg, rgba(23, 107, 93, 0.18), rgba(182, 95, 40, 0.1)),
+          repeating-linear-gradient(45deg, #eef4f1 0 10px, #e4ece8 10px 20px);
+        display: flex;
+        align-items: end;
+        padding: 8px;
+        color: var(--ink);
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      .form-grid {
+        display: grid;
+        gap: 10px;
+      }
+
+      .field label {
+        display: block;
+        margin-bottom: 5px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .activity {
+        display: grid;
+        gap: 8px;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+
+      .activity li {
+        border-left: 3px solid var(--line-strong);
+        padding-left: 10px;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.5;
+      }
+
+      .workers-grid {
+        padding: 16px 24px 24px;
+        display: grid;
+        grid-template-columns: repeat(2, minmax(280px, 1fr));
+        gap: 14px;
+      }
+
+      .worker-card {
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        box-shadow: var(--shadow);
+        padding: 16px;
+        display: grid;
+        gap: 12px;
+      }
+
+      .worker-head {
+        display: flex;
+        align-items: start;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      .worker-head h3 {
+        margin: 0;
+        font-size: 18px;
+      }
+
+      .worker-head p {
+        margin: 4px 0 0;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .worker-meta {
+        display: grid;
+        gap: 8px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .worker-meta strong {
+        color: var(--ink);
+      }
+
+      .worker-actions {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
+      .worker-badge {
+        border-radius: 999px;
+        padding: 4px 9px;
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      .worker-badge.available {
+        color: #305b21;
+        background: #e0f2d8;
+      }
+
+      .worker-badge.unavailable {
+        color: #7a2323;
+        background: #f3dcdc;
+      }
+
+      .empty {
+        padding: 40px 20px;
+        color: var(--muted);
+        text-align: center;
+      }
+
+      @media (max-width: 980px) {
+        .app {
+          grid-template-columns: 1fr;
+        }
+
+        .sidebar {
+          display: none;
+        }
+
+        .metrics,
+        .workspace,
+        .workers-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .order-list,
+        .detail {
+          max-height: none;
+        }
+      }
+
+      @media (max-width: 640px) {
+        .topbar {
+          align-items: flex-start;
+          flex-direction: column;
+          padding: 16px;
+        }
+
+        .metrics,
+        .workspace {
+          padding-left: 16px;
+          padding-right: 16px;
+        }
+
+        .filters,
+        .detail-grid,
+        .form-layout,
+        .detail-summary {
+          grid-template-columns: 1fr;
+        }
+
+        .photo-strip {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <aside class="sidebar">
+        <div class="brand">
+          <h1>割草服务平台</h1>
+          <p>后台原型 · 阶段 1</p>
+        </div>
+        <nav class="nav" aria-label="后台导航">
+          <button class="active" type="button" data-view="orders">订单管理</button>
+          <button type="button" data-view="workers">割草工</button>
+          <button type="button">价格配置</button>
+          <button type="button">运营记录</button>
+        </nav>
+        <div class="sidebar-note">
+          当前原型用于验证后台接单、报价、派单和订单状态流转。
+        </div>
+      </aside>
+
+      <main class="main">
+        <header class="topbar">
+          <div>
+            <h2 id="pageTitle">订单管理</h2>
+            <p id="pageSubtitle">阶段 1：平台先能接住业务，再逐步开放用户端和割草工端。</p>
+          </div>
+          <div class="actions">
+            <button class="btn ghost" type="button" id="resetBtn">重置演示数据</button>
+            <button class="btn primary" type="button" id="newOrderBtn">新建订单</button>
+          </div>
+        </header>
+
+        <section class="status-strip" aria-label="数据连接状态">
+          <div class="status-copy">
+            <strong>数据源状态</strong>
+            <span id="dataHint">正在加载阶段 1 后台数据...</span>
+          </div>
+          <span class="status-pill fallback" id="dataMode">加载中</span>
+        </section>
+
+        <section class="metrics" aria-label="运营指标" id="metricsSection">
+          <div class="metric">
+            <span>待确认</span>
+            <strong id="metricPending">0</strong>
+          </div>
+          <div class="metric">
+            <span>已报价</span>
+            <strong id="metricQuoted">0</strong>
+          </div>
+          <div class="metric">
+            <span>已派单</span>
+            <strong id="metricAssigned">0</strong>
+          </div>
+          <div class="metric">
+            <span>今日预计收入</span>
+            <strong id="metricRevenue">$0</strong>
+          </div>
+        </section>
+
+        <section class="workspace" id="ordersView">
+          <section class="panel" aria-label="订单列表">
+            <div class="panel-head">
+              <h3>订单列表</h3>
+              <span id="resultCount" class="order-meta">0 单</span>
+            </div>
+            <div class="filters">
+              <input class="input" id="searchInput" type="search" placeholder="搜索用户、地址、订单号" />
+              <select class="select" id="statusFilter" aria-label="订单状态筛选">
+                <option value="all">全部状态</option>
+                <option value="pending_review">待平台确认</option>
+                <option value="quoted">已报价</option>
+                <option value="assigned">已派单</option>
+                <option value="accepted_by_worker">割草工已接单</option>
+                <option value="cancelled">已取消</option>
+              </select>
+            </div>
+            <div class="order-list" id="orderList"></div>
+          </section>
+
+          <section class="panel detail" aria-label="订单详情">
+            <div class="panel-head">
+              <h3>订单详情</h3>
+              <span id="detailStatus" class="badge pending_review">待平台确认</span>
+            </div>
+            <div id="detailBody"></div>
+          </section>
+        </section>
+
+        <section class="workers-grid hidden" id="workersView" aria-label="割草工管理"></section>
+      </main>
+    </div>
+
+    <div class="modal-shell" id="orderModal" aria-hidden="true">
+      <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="orderModalTitle">
+        <div class="modal-head">
+          <div>
+            <h3 id="orderModalTitle">新建订单</h3>
+            <p>阶段 1 先支持运营后台录入客户、地址、草坪说明和预约时间，提交后默认进入“待平台确认”。</p>
+          </div>
+          <button class="btn ghost" type="button" id="closeOrderModalBtn">关闭</button>
+        </div>
+        <div class="modal-body">
+          <form id="createOrderForm">
+            <div class="form-layout">
+              <div class="field">
+                <label for="createUser">客户姓名</label>
+                <input class="input" id="createUser" name="user" type="text" required />
+              </div>
+              <div class="field">
+                <label for="createPhone">联系电话</label>
+                <input class="input" id="createPhone" name="phone" type="text" required />
+              </div>
+              <div class="field full">
+                <label for="createAddress">服务地址</label>
+                <input class="input" id="createAddress" name="address" type="text" required />
+              </div>
+              <div class="field">
+                <label for="createServiceType">服务类型</label>
+                <select class="select" id="createServiceType" name="serviceType" required>
+                  <option value="一次性割草">一次性割草</option>
+                  <option value="定期割草预约">定期割草预约</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="createRequestedTime">期望服务时间</label>
+                <input class="input" id="createRequestedTime" name="requestedTime" type="text" placeholder="例如：2026-06-15 09:00-12:00" required />
+              </div>
+              <div class="field">
+                <label for="createLawnSize">草坪面积或范围</label>
+                <input class="input" id="createLawnSize" name="lawnSize" type="text" placeholder="例如：约 180 平方米" required />
+              </div>
+              <div class="field full">
+                <label for="createCondition">现场情况</label>
+                <textarea class="textarea" id="createCondition" name="condition" required></textarea>
+              </div>
+              <div class="field full">
+                <label for="createNote">客户备注</label>
+                <textarea class="textarea" id="createNote" name="note"></textarea>
+              </div>
+            </div>
+          </form>
+        </div>
+        <div class="modal-actions">
+          <button class="btn ghost" type="button" id="cancelOrderModalBtn">取消</button>
+          <button class="btn primary" type="submit" form="createOrderForm" id="submitOrderBtn">保存订单</button>
+        </div>
+      </div>
+    </div>
+    <script src="/mowing-platform/admin-app.js"></script>
+  </body>
+</html>
