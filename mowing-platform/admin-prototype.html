@@ -452,6 +452,16 @@
         background: #e0f2d8;
       }
 
+      .badge.in_service {
+        color: #244f7a;
+        background: #dcecff;
+      }
+
+      .badge.completed {
+        color: #0f4f45;
+        background: #d9f2ec;
+      }
+
       .badge.cancelled {
         color: #7a2323;
         background: #f3dcdc;
@@ -569,6 +579,265 @@
         gap: 14px;
       }
 
+      .dispatch-shell {
+        padding: 16px 24px 24px;
+        display: grid;
+        gap: 16px;
+      }
+
+      .dispatch-shell.hidden,
+      .archive-shell.hidden {
+        display: none;
+      }
+
+      .archive-shell {
+        padding: 16px 24px 24px;
+        display: grid;
+        gap: 16px;
+      }
+
+      .dispatch-toolbar {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 10px;
+      }
+
+      .archive-toolbar {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 10px;
+      }
+
+      .dispatch-summary {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      .archive-summary {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      .dispatch-board {
+        display: grid;
+        grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.8fr);
+        gap: 16px;
+      }
+
+      .archive-board {
+        display: grid;
+        grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.8fr);
+        gap: 16px;
+      }
+
+      .dispatch-column {
+        min-width: 0;
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        box-shadow: var(--shadow);
+        overflow: hidden;
+      }
+
+      .archive-column {
+        min-width: 0;
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        box-shadow: var(--shadow);
+        overflow: hidden;
+      }
+
+      .dispatch-head {
+        padding: 14px 16px;
+        border-bottom: 1px solid var(--line);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      .dispatch-head h3 {
+        margin: 0;
+        font-size: 16px;
+      }
+
+      .dispatch-head span {
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .dispatch-list,
+      .schedule-list {
+        padding: 16px;
+        display: grid;
+        gap: 12px;
+      }
+
+      .dispatch-card,
+      .schedule-card {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fbfcfc;
+        padding: 14px;
+        display: grid;
+        gap: 12px;
+      }
+
+      .dispatch-card header,
+      .schedule-card header {
+        display: flex;
+        align-items: start;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      .dispatch-card h4,
+      .schedule-card h4 {
+        margin: 0;
+        font-size: 15px;
+      }
+
+      .dispatch-card p,
+      .schedule-card p {
+        margin: 4px 0 0;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.5;
+      }
+
+      .dispatch-grid,
+      .schedule-grid {
+        display: grid;
+        grid-template-columns: 96px minmax(0, 1fr);
+        gap: 8px 12px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .dispatch-grid strong,
+      .schedule-grid strong {
+        color: var(--ink);
+      }
+
+      .dispatch-actions {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 8px;
+        align-items: end;
+      }
+
+      .dispatch-hint {
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.5;
+      }
+
+      .dispatch-hint.conflict {
+        color: var(--danger);
+      }
+
+      .suggestion-row {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+      }
+
+      .suggestion-chip {
+        border-radius: 999px;
+        padding: 4px 8px;
+        background: #eef4f1;
+        color: var(--primary-dark);
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      .suggestion-chip.conflict {
+        background: #f3dcdc;
+        color: #7a2323;
+      }
+
+      .schedule-jobs {
+        display: grid;
+        gap: 8px;
+      }
+
+      .schedule-job {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #ffffff;
+        padding: 10px;
+        display: grid;
+        gap: 4px;
+      }
+
+      .schedule-job.conflict {
+        border-color: #e1b1b1;
+        background: #fff6f6;
+      }
+
+      .schedule-job strong {
+        font-size: 13px;
+      }
+
+      .schedule-job span {
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .archive-list,
+      .archive-ranking {
+        padding: 16px;
+        display: grid;
+        gap: 12px;
+      }
+
+      .archive-card,
+      .archive-rank {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fbfcfc;
+        padding: 14px;
+        display: grid;
+        gap: 10px;
+      }
+
+      .archive-card header,
+      .archive-rank header {
+        display: flex;
+        align-items: start;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      .archive-card h4,
+      .archive-rank h4 {
+        margin: 0;
+        font-size: 15px;
+      }
+
+      .archive-card p,
+      .archive-rank p {
+        margin: 4px 0 0;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.5;
+      }
+
+      .archive-grid {
+        display: grid;
+        grid-template-columns: 96px minmax(0, 1fr);
+        gap: 8px 12px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .archive-grid strong {
+        color: var(--ink);
+      }
+
       .worker-card {
         background: var(--surface);
         border: 1px solid var(--line);
@@ -675,7 +944,11 @@
 
         .metrics,
         .workspace,
-        .workers-grid {
+        .workers-grid,
+        .dispatch-summary,
+        .dispatch-board,
+        .archive-summary,
+        .archive-board {
           grid-template-columns: 1fr;
         }
 
@@ -701,7 +974,13 @@
         .filters,
         .detail-grid,
         .form-layout,
-        .detail-summary {
+        .detail-summary,
+        .dispatch-toolbar,
+        .archive-toolbar,
+        .dispatch-actions,
+        .dispatch-grid,
+        .schedule-grid,
+        .archive-grid {
           grid-template-columns: 1fr;
         }
 
@@ -720,7 +999,9 @@
         </div>
         <nav class="nav" aria-label="后台导航">
           <button class="active" type="button" data-view="orders">订单管理</button>
-          <button type="button" data-view="workers">割草工</button>
+          <button type="button" data-view="dispatch">派单看板</button>
+          <button type="button" data-view="archive">完成归档</button>
+          <button type="button" data-view="workers">服务商</button>
           <button type="button">价格配置</button>
           <button type="button">运营记录</button>
         </nav>
@@ -733,7 +1014,7 @@
         <header class="topbar">
           <div>
             <h2 id="pageTitle">订单管理</h2>
-            <p id="pageSubtitle">阶段 1：平台先能接住业务，再逐步开放用户端和割草工端。</p>
+            <p id="pageSubtitle">阶段 1：平台先能接住业务，再逐步开放用户端和服务商端。</p>
           </div>
           <div class="actions">
             <button class="btn ghost" type="button" id="resetBtn">重置演示数据</button>
@@ -781,7 +1062,9 @@
                 <option value="pending_review">待平台确认</option>
                 <option value="quoted">已报价</option>
                 <option value="assigned">已派单</option>
-                <option value="accepted_by_worker">割草工已接单</option>
+                <option value="accepted_by_worker">服务商已接单</option>
+                <option value="in_service">服务中</option>
+                <option value="completed">已完成</option>
                 <option value="cancelled">已取消</option>
               </select>
             </div>
@@ -797,7 +1080,73 @@
           </section>
         </section>
 
-        <section class="workers-grid hidden" id="workersView" aria-label="割草工管理"></section>
+        <section class="dispatch-shell hidden" id="dispatchView" aria-label="派单看板">
+          <div class="dispatch-toolbar">
+            <select class="select" id="dispatchStatusFilter" aria-label="派单状态筛选">
+              <option value="all">全部待处理订单</option>
+              <option value="needs_quote">待报价</option>
+              <option value="needs_assign">待派单</option>
+              <option value="assigned">已派出</option>
+              <option value="in_service">服务执行中</option>
+            </select>
+            <select class="select" id="dispatchAreaFilter" aria-label="区域筛选">
+              <option value="all">全部区域</option>
+            </select>
+            <input class="input" id="dispatchDateFilter" type="date" aria-label="日期筛选" />
+          </div>
+
+          <div class="dispatch-summary" id="dispatchSummary"></div>
+
+          <div class="dispatch-board">
+            <section class="dispatch-column" aria-label="待派单订单">
+              <div class="dispatch-head">
+                <h3>待处理订单</h3>
+                <span id="dispatchResultCount">0 单</span>
+              </div>
+              <div class="dispatch-list" id="dispatchOrderList"></div>
+            </section>
+
+            <section class="dispatch-column" aria-label="服务商日程">
+              <div class="dispatch-head">
+                <h3>服务商日程</h3>
+                <span id="scheduleCaption">按当前筛选展示</span>
+              </div>
+              <div class="schedule-list" id="dispatchScheduleList"></div>
+            </section>
+          </div>
+        </section>
+
+        <section class="archive-shell hidden" id="archiveView" aria-label="完成归档">
+          <div class="archive-toolbar">
+            <input class="input" id="archiveSearchInput" type="search" placeholder="搜索订单号、客户、地址" />
+            <select class="select" id="archiveWorkerFilter" aria-label="服务商筛选">
+              <option value="all">全部服务商</option>
+            </select>
+            <input class="input" id="archiveDateFilter" type="date" aria-label="完成日期筛选" />
+          </div>
+
+          <div class="archive-summary" id="archiveSummary"></div>
+
+          <div class="archive-board">
+            <section class="archive-column" aria-label="已完成订单">
+              <div class="dispatch-head">
+                <h3>已完成订单</h3>
+                <span id="archiveResultCount">0 单</span>
+              </div>
+              <div class="archive-list" id="archiveOrderList"></div>
+            </section>
+
+            <section class="archive-column" aria-label="服务商完成排行">
+              <div class="dispatch-head">
+                <h3>服务商完成排行</h3>
+                <span id="archiveRankingCaption">按当前筛选统计</span>
+              </div>
+              <div class="archive-ranking" id="archiveRankingList"></div>
+            </section>
+          </div>
+        </section>
+
+        <section class="workers-grid hidden" id="workersView" aria-label="服务商管理"></section>
       </main>
     </div>
 
@@ -833,8 +1182,16 @@
                 </select>
               </div>
               <div class="field">
-                <label for="createRequestedTime">期望服务时间</label>
-                <input class="input" id="createRequestedTime" name="requestedTime" type="text" placeholder="例如：2026-06-15 09:00-12:00" required />
+                <label for="createRequestedDate">服务日期</label>
+                <input class="input" id="createRequestedDate" name="requestedDate" type="date" required />
+              </div>
+              <div class="field">
+                <label for="createRequestedStart">开始时间</label>
+                <input class="input" id="createRequestedStart" name="requestedStart" type="time" required />
+              </div>
+              <div class="field">
+                <label for="createRequestedEnd">结束时间</label>
+                <input class="input" id="createRequestedEnd" name="requestedEnd" type="time" required />
               </div>
               <div class="field">
                 <label for="createLawnSize">草坪面积或范围</label>
@@ -862,7 +1219,7 @@
       <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="workerModalTitle">
         <div class="modal-head">
           <div>
-            <h3 id="workerModalTitle">编辑割草工资料</h3>
+            <h3 id="workerModalTitle">编辑服务商资料</h3>
             <p>阶段 1 先把联系方式、服务区域、审核状态和派单备注管理清楚，机器人维护事项放到后续阶段。</p>
           </div>
           <button class="btn ghost" type="button" id="closeWorkerModalBtn">关闭</button>

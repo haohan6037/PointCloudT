@@ -195,6 +195,10 @@ class WorkerProfilePayload(BaseModel):
     serviceNote: str = ""
 
 
+class OrderStatusPayload(BaseModel):
+    status: str = Field(min_length=1)
+
+
 @dataclass
 class StoreStatus:
     mode: str
@@ -278,6 +282,34 @@ class InMemoryStore:
         )
         order["activity"] = [f"{name}已确认接单。", *order["activity"]]
         return order
+
+    def update_order_status(self, order_id: str, status: str) -> dict[str, Any]:
+        order = self._find_order(order_id)
+        if status == "accepted_by_worker":
+            return self.accept_order(order_id)
+        if status == "in_service":
+            if not order["assignedWorkerId"]:
+                raise HTTPException(status_code=400, detail="Order must be assigned first")
+            order["status"] = "in_service"
+            order["updatedAt"] = timestamp()
+            name = next(
+                (worker["name"] for worker in self.workers if worker["id"] == order["assignedWorkerId"]),
+                order["assignedWorkerId"],
+            )
+            order["activity"] = [f"{name}开始上门服务。", *order["activity"]]
+            return order
+        if status == "completed":
+            if not order["assignedWorkerId"]:
+                raise HTTPException(status_code=400, detail="Order must be assigned first")
+            order["status"] = "completed"
+            order["updatedAt"] = timestamp()
+            name = next(
+                (worker["name"] for worker in self.workers if worker["id"] == order["assignedWorkerId"]),
+                order["assignedWorkerId"],
+            )
+            order["activity"] = [f"{name}已完成本次草坪服务。", *order["activity"]]
+            return order
+        raise HTTPException(status_code=400, detail="Unsupported status")
 
     def add_demo_order(self) -> dict[str, Any]:
         order = {
@@ -600,6 +632,45 @@ class PostgresStore:
             conn.commit()
         return self.get_order(order_id)
 
+    def update_order_status(self, order_id: str, status: str) -> dict[str, Any]:
+        if status == "accepted_by_worker":
+            return self.accept_order(order_id)
+        status_activity = {
+            "in_service": "开始上门服务。",
+            "completed": "已完成本次草坪服务。",
+        }
+        if status not in status_activity:
+            raise HTTPException(status_code=400, detail="Unsupported status")
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    select o.activity_json, w.name, o.assigned_worker_id
+                    from mowing_orders o
+                    left join mowing_workers w on w.id = o.assigned_worker_id
+                    where o.id = %s
+                    """,
+                    (order_id,),
+                )
+                row = cur.fetchone()
+                if row is None:
+                    raise HTTPException(status_code=404, detail="Order not found")
+                if row[2] is None:
+                    raise HTTPException(status_code=400, detail="Order must be assigned first")
+                worker_name = row[1] or row[2]
+                activity = self._decode_json_value(row[0])
+                activity.insert(0, f"{worker_name}{status_activity[status]}")
+                cur.execute(
+                    """
+                    update mowing_orders
+                    set status = %s, updated_at = now(), activity_json = %s
+                    where id = %s
+                    """,
+                    (status, json.dumps(activity, ensure_ascii=False), order_id),
+                )
+            conn.commit()
+        return self.get_order(order_id)
+
     def add_demo_order(self) -> dict[str, Any]:
         order = {
             "id": self._next_order_id(),
@@ -815,6 +886,12 @@ def assign_worker(order_id: str, payload: AssignPayload) -> dict[str, Any]:
 @app.post("/api/orders/{order_id}/accept")
 def accept_order(order_id: str) -> dict[str, Any]:
     order = service.store.accept_order(order_id)
+    return {"order": order, **service.bootstrap()}
+
+
+@app.post("/api/orders/{order_id}/status")
+def update_order_status(order_id: str, payload: OrderStatusPayload) -> dict[str, Any]:
+    order = service.store.update_order_status(order_id, payload.status)
     return {"order": order, **service.bootstrap()}
 
 
