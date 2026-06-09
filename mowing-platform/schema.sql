@@ -24,13 +24,38 @@ create table if not exists mowing_orders (
     condition_note text not null,
     customer_note text not null default '',
     status text not null,
+    priority_level text not null default 'normal',
+    ops_tag text not null default '',
     quoted_price numeric(10, 2),
     price_note text not null default '',
     assigned_worker_id text references mowing_workers(id),
+    actual_amount numeric(10, 2),
+    settlement_status text not null default 'pending',
+    completion_note text not null default '',
+    review_note text not null default '',
+    exception_type text not null default '',
+    exception_note text not null default '',
+    exception_resolution text not null default '',
+    platform_share numeric(10, 2),
+    worker_payout numeric(10, 2),
+    settled_at timestamptz,
     updated_at timestamptz not null default now(),
     photos_json jsonb not null default '[]'::jsonb,
     activity_json jsonb not null default '[]'::jsonb
 );
+
+alter table if exists mowing_orders add column if not exists actual_amount numeric(10, 2);
+alter table if exists mowing_orders add column if not exists settlement_status text not null default 'pending';
+alter table if exists mowing_orders add column if not exists completion_note text not null default '';
+alter table if exists mowing_orders add column if not exists review_note text not null default '';
+alter table if exists mowing_orders add column if not exists priority_level text not null default 'normal';
+alter table if exists mowing_orders add column if not exists ops_tag text not null default '';
+alter table if exists mowing_orders add column if not exists exception_type text not null default '';
+alter table if exists mowing_orders add column if not exists exception_note text not null default '';
+alter table if exists mowing_orders add column if not exists exception_resolution text not null default '';
+alter table if exists mowing_orders add column if not exists platform_share numeric(10, 2);
+alter table if exists mowing_orders add column if not exists worker_payout numeric(10, 2);
+alter table if exists mowing_orders add column if not exists settled_at timestamptz;
 
 create index if not exists idx_mowing_orders_status on mowing_orders(status);
 create index if not exists idx_mowing_orders_updated_at on mowing_orders(updated_at desc);

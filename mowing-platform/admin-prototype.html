@@ -292,6 +292,88 @@
         gap: 12px;
       }
 
+      .ops-dashboard {
+        padding: 0 24px 16px;
+        display: grid;
+        gap: 16px;
+      }
+
+      .ops-dashboard.hidden {
+        display: none;
+      }
+
+      .ops-dashboard-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1.1fr) minmax(320px, 0.9fr);
+        gap: 16px;
+      }
+
+      .ops-card {
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        box-shadow: var(--shadow);
+        overflow: hidden;
+      }
+
+      .ops-card-body {
+        padding: 16px;
+        display: grid;
+        gap: 12px;
+      }
+
+      .ops-alert-list,
+      .ops-focus-list {
+        display: grid;
+        gap: 10px;
+      }
+
+      .ops-alert,
+      .ops-focus {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fbfcfc;
+        padding: 12px;
+        display: grid;
+        gap: 8px;
+      }
+
+      .ops-alert {
+        width: 100%;
+        text-align: left;
+        cursor: pointer;
+      }
+
+      .ops-alert.urgent {
+        border-color: #e4b8b8;
+        background: #fff6f6;
+      }
+
+      .ops-alert.warn {
+        border-color: #e8d28a;
+        background: #fffdf4;
+      }
+
+      .ops-focus-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+      }
+
+      .ops-alert strong,
+      .ops-focus strong {
+        color: var(--ink);
+        font-size: 14px;
+      }
+
+      .ops-alert span,
+      .ops-focus span {
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.5;
+      }
+
       .metric {
         background: var(--surface);
         border: 1px solid var(--line);
@@ -392,6 +474,15 @@
         background: var(--surface-soft);
       }
 
+      .order-row.urgent-row {
+        border-left: 4px solid #c65454;
+        padding-left: 12px;
+      }
+
+      .order-row.overdue-row {
+        background: #fff9ef;
+      }
+
       .order-main {
         min-width: 0;
       }
@@ -457,9 +548,19 @@
         background: #dcecff;
       }
 
+      .badge.pending_quality_review {
+        color: #8a6a14;
+        background: #fff2c2;
+      }
+
       .badge.completed {
         color: #0f4f45;
         background: #d9f2ec;
+      }
+
+      .badge.exception_open {
+        color: #7a2323;
+        background: #f3dcdc;
       }
 
       .badge.cancelled {
@@ -572,6 +673,38 @@
         line-height: 1.5;
       }
 
+      .todo-list {
+        display: grid;
+        gap: 10px;
+      }
+
+      .todo-item {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fbfcfc;
+        padding: 12px;
+      }
+
+      .todo-item strong,
+      .timeline-item strong {
+        display: block;
+        color: var(--ink);
+        font-size: 13px;
+      }
+
+      .todo-item span,
+      .timeline-time {
+        display: block;
+        margin-top: 4px;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.5;
+      }
+
+      .timeline-item {
+        border-left-color: var(--primary);
+      }
+
       .workers-grid {
         padding: 16px 24px 24px;
         display: grid;
@@ -586,11 +719,18 @@
       }
 
       .dispatch-shell.hidden,
-      .archive-shell.hidden {
+      .archive-shell.hidden,
+      .acceptance-shell.hidden {
         display: none;
       }
 
       .archive-shell {
+        padding: 16px 24px 24px;
+        display: grid;
+        gap: 16px;
+      }
+
+      .acceptance-shell {
         padding: 16px 24px 24px;
         display: grid;
         gap: 16px;
@@ -604,7 +744,7 @@
 
       .archive-toolbar {
         display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
+        grid-template-columns: repeat(4, minmax(0, 1fr));
         gap: 10px;
       }
 
@@ -615,6 +755,12 @@
       }
 
       .archive-summary {
+        display: grid;
+        grid-template-columns: repeat(6, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      .acceptance-summary {
         display: grid;
         grid-template-columns: repeat(4, minmax(0, 1fr));
         gap: 12px;
@@ -632,6 +778,12 @@
         gap: 16px;
       }
 
+      .acceptance-board {
+        display: grid;
+        grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.85fr);
+        gap: 16px;
+      }
+
       .dispatch-column {
         min-width: 0;
         background: var(--surface);
@@ -642,6 +794,15 @@
       }
 
       .archive-column {
+        min-width: 0;
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        box-shadow: var(--shadow);
+        overflow: hidden;
+      }
+
+      .acceptance-column {
         min-width: 0;
         background: var(--surface);
         border: 1px solid var(--line);
@@ -794,6 +955,85 @@
         gap: 12px;
       }
 
+      .acceptance-list,
+      .acceptance-actions {
+        padding: 16px;
+        display: grid;
+        gap: 12px;
+      }
+
+      .acceptance-card,
+      .acceptance-action-card {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fbfcfc;
+        padding: 14px;
+        display: grid;
+        gap: 10px;
+      }
+
+      .acceptance-card.pass {
+        border-color: #b9ddcf;
+        background: #f5fcf9;
+      }
+
+      .acceptance-card.warn {
+        border-color: #e8d28a;
+        background: #fffdf4;
+      }
+
+      .acceptance-card header,
+      .acceptance-action-card header {
+        display: flex;
+        align-items: start;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      .acceptance-card h4,
+      .acceptance-action-card h4 {
+        margin: 0;
+        font-size: 15px;
+      }
+
+      .acceptance-card p,
+      .acceptance-action-card p {
+        margin: 4px 0 0;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.5;
+      }
+
+      .acceptance-status {
+        border-radius: 999px;
+        padding: 4px 9px;
+        font-size: 12px;
+        font-weight: 700;
+        white-space: nowrap;
+      }
+
+      .acceptance-status.pass {
+        color: #0f4f45;
+        background: #d9f2ec;
+      }
+
+      .acceptance-status.warn {
+        color: #8a6a14;
+        background: #fff2c2;
+      }
+
+      .acceptance-meta {
+        display: grid;
+        grid-template-columns: 110px minmax(0, 1fr);
+        gap: 8px 12px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .acceptance-meta strong {
+        color: var(--ink);
+      }
+
       .archive-card,
       .archive-rank {
         border: 1px solid var(--line);
@@ -802,6 +1042,16 @@
         padding: 14px;
         display: grid;
         gap: 10px;
+      }
+
+      .archive-card.selected {
+        border-color: var(--primary);
+        box-shadow: 0 0 0 1px rgba(23, 107, 93, 0.18);
+      }
+
+      .archive-card.pending {
+        border-color: #e8d28a;
+        background: #fffdf4;
       }
 
       .archive-card header,
@@ -836,6 +1086,40 @@
 
       .archive-grid strong {
         color: var(--ink);
+      }
+
+      .archive-form {
+        padding-top: 4px;
+        border-top: 1px dashed var(--line);
+      }
+
+      .range-pair {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+      }
+
+      .archive-selection {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        flex-wrap: wrap;
+        padding: 12px 16px 0;
+      }
+
+      .archive-selection label {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .inline-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
       }
 
       .worker-card {
@@ -889,6 +1173,92 @@
         line-height: 1.55;
       }
 
+      .worker-board {
+        border-top: 1px dashed var(--line);
+        padding-top: 12px;
+        display: grid;
+        gap: 12px;
+      }
+
+      .worker-board-summary {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 8px;
+      }
+
+      .worker-board-stat {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fbfcfc;
+        padding: 10px;
+      }
+
+      .worker-board-stat span {
+        display: block;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .worker-board-stat strong {
+        display: block;
+        margin-top: 4px;
+        color: var(--ink);
+        font-size: 15px;
+      }
+
+      .worker-lanes {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 10px;
+      }
+
+      .worker-lane {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fbfcfc;
+        padding: 10px;
+        display: grid;
+        gap: 8px;
+      }
+
+      .worker-lane h4 {
+        margin: 0;
+        font-size: 13px;
+        color: var(--primary-dark);
+      }
+
+      .worker-task-list {
+        display: grid;
+        gap: 8px;
+      }
+
+      .worker-task {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--surface);
+        padding: 10px;
+        display: grid;
+        gap: 6px;
+      }
+
+      .worker-task strong {
+        color: var(--ink);
+        font-size: 13px;
+      }
+
+      .worker-task span {
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.45;
+      }
+
+      .worker-task-actions {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+      }
+
       .worker-actions {
         display: flex;
         gap: 8px;
@@ -927,6 +1297,26 @@
         background: #f3dcdc;
       }
 
+      .worker-badge.low {
+        color: #63706d;
+        background: #edf1f0;
+      }
+
+      .worker-badge.normal {
+        color: #0f4f45;
+        background: #d9f2ec;
+      }
+
+      .worker-badge.high {
+        color: #8a6a14;
+        background: #fff2c2;
+      }
+
+      .worker-badge.urgent {
+        color: #7a2323;
+        background: #f3dcdc;
+      }
+
       .empty {
         padding: 40px 20px;
         color: var(--muted);
@@ -948,7 +1338,9 @@
         .dispatch-summary,
         .dispatch-board,
         .archive-summary,
-        .archive-board {
+        .archive-board,
+        .acceptance-summary,
+        .acceptance-board {
           grid-template-columns: 1fr;
         }
 
@@ -980,7 +1372,8 @@
         .dispatch-actions,
         .dispatch-grid,
         .schedule-grid,
-        .archive-grid {
+        .archive-grid,
+        .acceptance-meta {
           grid-template-columns: 1fr;
         }
 
@@ -1002,6 +1395,7 @@
           <button type="button" data-view="dispatch">派单看板</button>
           <button type="button" data-view="archive">完成归档</button>
           <button type="button" data-view="workers">服务商</button>
+          <button type="button" data-view="acceptance">阶段验收</button>
           <button type="button">价格配置</button>
           <button type="button">运营记录</button>
         </nav>
@@ -1049,6 +1443,25 @@
           </div>
         </section>
 
+        <section class="ops-dashboard" id="opsDashboard" aria-label="平台运营日报">
+          <div class="ops-dashboard-grid">
+            <section class="ops-card" aria-label="今日提醒">
+              <div class="panel-head">
+                <h3>今日提醒</h3>
+                <span id="opsAlertCount">0 条</span>
+              </div>
+              <div class="ops-card-body ops-alert-list" id="opsAlertList"></div>
+            </section>
+            <section class="ops-card" aria-label="重点跟进">
+              <div class="panel-head">
+                <h3>重点跟进</h3>
+                <span id="opsFocusCaption">按当前订单统计</span>
+              </div>
+              <div class="ops-card-body ops-focus-list" id="opsFocusList"></div>
+            </section>
+          </div>
+        </section>
+
         <section class="workspace" id="ordersView">
           <section class="panel" aria-label="订单列表">
             <div class="panel-head">
@@ -1064,8 +1477,20 @@
                 <option value="assigned">已派单</option>
                 <option value="accepted_by_worker">服务商已接单</option>
                 <option value="in_service">服务中</option>
+                <option value="pending_quality_review">待质量审核</option>
+                <option value="exception_open">异常处理中</option>
                 <option value="completed">已完成</option>
                 <option value="cancelled">已取消</option>
+              </select>
+              <select class="select" id="priorityFilter" aria-label="优先级筛选">
+                <option value="all">全部优先级</option>
+                <option value="urgent">紧急</option>
+                <option value="high">优先处理</option>
+                <option value="normal">常规</option>
+                <option value="low">低优先级</option>
+              </select>
+              <select class="select" id="opsTagFilter" aria-label="运营标签筛选">
+                <option value="all">全部运营标签</option>
               </select>
             </div>
             <div class="order-list" id="orderList"></div>
@@ -1088,9 +1513,25 @@
               <option value="needs_assign">待派单</option>
               <option value="assigned">已派出</option>
               <option value="in_service">服务执行中</option>
+              <option value="pending_quality_review">待质量审核</option>
+              <option value="exception_open">异常处理中</option>
             </select>
             <select class="select" id="dispatchAreaFilter" aria-label="区域筛选">
               <option value="all">全部区域</option>
+            </select>
+            <select class="select" id="dispatchPriorityFilter" aria-label="派单优先级筛选">
+              <option value="all">全部优先级</option>
+              <option value="urgent">紧急</option>
+              <option value="high">优先处理</option>
+              <option value="normal">常规</option>
+              <option value="low">低优先级</option>
+            </select>
+            <select class="select" id="dispatchOpsTagFilter" aria-label="派单运营标签筛选">
+              <option value="all">全部运营标签</option>
+            </select>
+            <select class="select" id="dispatchSortFilter" aria-label="派单排序方式">
+              <option value="priority_time">优先级优先</option>
+              <option value="time_priority">时间优先</option>
             </select>
             <input class="input" id="dispatchDateFilter" type="date" aria-label="日期筛选" />
           </div>
@@ -1122,7 +1563,18 @@
             <select class="select" id="archiveWorkerFilter" aria-label="服务商筛选">
               <option value="all">全部服务商</option>
             </select>
+            <select class="select" id="archiveSettlementFilter" aria-label="结算状态筛选">
+              <option value="all">全部结算状态</option>
+              <option value="pending">待结算</option>
+              <option value="settled">已结算</option>
+            </select>
             <input class="input" id="archiveDateFilter" type="date" aria-label="完成日期筛选" />
+          </div>
+          <div class="archive-toolbar">
+            <div class="range-pair">
+              <input class="input" id="archiveMinAmount" type="number" min="0" step="0.01" placeholder="最低实收金额" />
+              <input class="input" id="archiveMaxAmount" type="number" min="0" step="0.01" placeholder="最高实收金额" />
+            </div>
           </div>
 
           <div class="archive-summary" id="archiveSummary"></div>
@@ -1132,6 +1584,16 @@
               <div class="dispatch-head">
                 <h3>已完成订单</h3>
                 <span id="archiveResultCount">0 单</span>
+              </div>
+              <div class="archive-selection">
+                <label>
+                  <input id="archiveSelectAll" type="checkbox" />
+                  <span id="archiveSelectionCount">已选 0 单</span>
+                </label>
+                <div class="worker-actions">
+                  <button class="btn" type="button" id="archiveExportBtn">导出 CSV</button>
+                  <button class="btn" type="button" id="archiveBatchSettleBtn">批量标记已结算</button>
+                </div>
               </div>
               <div class="archive-list" id="archiveOrderList"></div>
             </section>
@@ -1147,6 +1609,28 @@
         </section>
 
         <section class="workers-grid hidden" id="workersView" aria-label="服务商管理"></section>
+
+        <section class="acceptance-shell hidden" id="acceptanceView" aria-label="阶段验收">
+          <div class="acceptance-summary" id="acceptanceSummary"></div>
+
+          <div class="acceptance-board">
+            <section class="acceptance-column" aria-label="验收清单">
+              <div class="dispatch-head">
+                <h3>阶段 1 验收清单</h3>
+                <span id="acceptanceResultCaption">按当前演示数据判断</span>
+              </div>
+              <div class="acceptance-list" id="acceptanceChecklist"></div>
+            </section>
+
+            <section class="acceptance-column" aria-label="演示动作">
+              <div class="dispatch-head">
+                <h3>推荐演示动作</h3>
+                <span>一键跳转到对应页面</span>
+              </div>
+              <div class="acceptance-actions" id="acceptanceActions"></div>
+            </section>
+          </div>
+        </section>
       </main>
     </div>
 
