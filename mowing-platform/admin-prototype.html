@@ -1381,6 +1381,48 @@
           grid-template-columns: 1fr;
         }
       }
+
+      /* ── Address autocomplete ── */
+      .autocomplete-wrapper {
+        position: relative;
+      }
+      .autocomplete-dropdown {
+        position: absolute;
+        inset: auto 0 auto 0;
+        top: 100%;
+        z-index: 30;
+        background: #fff;
+        border: 1px solid var(--line-strong);
+        border-top: 0;
+        border-radius: 0 0 8px 8px;
+        max-height: 220px;
+        overflow-y: auto;
+        display: none;
+        box-shadow: 0 8px 20px rgba(23, 33, 31, 0.12);
+      }
+      .autocomplete-dropdown.open {
+        display: block;
+      }
+      .autocomplete-item {
+        width: 100%;
+        border: 0;
+        background: transparent;
+        text-align: left;
+        padding: 10px 12px;
+        cursor: pointer;
+        font-size: 13px;
+        color: var(--ink);
+      }
+      .autocomplete-item:hover,
+      .autocomplete-item.active {
+        background: var(--surface-soft);
+        color: var(--primary-dark);
+      }
+      .autocomplete-loading {
+        padding: 10px 12px;
+        font-size: 12px;
+        color: var(--muted);
+      }
     </style>
   </head>
   <body>
@@ -1412,6 +1454,7 @@
           </div>
           <div class="actions">
             <button class="btn ghost" type="button" id="resetBtn">重置演示数据</button>
+            <button class="btn" type="button" id="exportOrdersBtn">导出 CSV</button>
             <button class="btn primary" type="button" id="newOrderBtn">新建订单</button>
           </div>
         </header>
@@ -1656,7 +1699,10 @@
               </div>
               <div class="field full">
                 <label for="createAddress">服务地址</label>
-                <input class="input" id="createAddress" name="address" type="text" required />
+                <div class="autocomplete-wrapper">
+                  <input class="input" id="createAddress" name="address" type="text" required autocomplete="off" />
+                  <div class="autocomplete-dropdown" id="createAddressDropdown"></div>
+                </div>
               </div>
               <div class="field">
                 <label for="createServiceType">服务类型</label>
@@ -1734,6 +1780,14 @@
               <div class="field full">
                 <label for="workerServiceNote">派单备注</label>
                 <textarea class="textarea" id="workerServiceNote" name="serviceNote"></textarea>
+              </div>
+              <div class="field">
+                <label for="workerLat">纬度 Lat</label>
+                <input class="input" id="workerLat" name="lat" type="number" step="0.0001" placeholder="-36.85" />
+              </div>
+              <div class="field">
+                <label for="workerLng">经度 Lng</label>
+                <input class="input" id="workerLng" name="lng" type="number" step="0.0001" placeholder="174.76" />
               </div>
             </div>
           </form>

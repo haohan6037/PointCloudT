@@ -12,6 +12,8 @@ create table if not exists mowing_workers (
 alter table if exists mowing_workers add column if not exists phone text not null default '';
 alter table if exists mowing_workers add column if not exists approval_status text not null default 'approved';
 alter table if exists mowing_workers add column if not exists service_note text not null default '';
+alter table if exists mowing_workers add column if not exists lat double precision;
+alter table if exists mowing_workers add column if not exists lng double precision;
 
 create table if not exists mowing_orders (
     id text primary key,
@@ -56,6 +58,7 @@ alter table if exists mowing_orders add column if not exists exception_resolutio
 alter table if exists mowing_orders add column if not exists platform_share numeric(10, 2);
 alter table if exists mowing_orders add column if not exists worker_payout numeric(10, 2);
 alter table if exists mowing_orders add column if not exists settled_at timestamptz;
+alter table if exists mowing_orders add column if not exists internal_note text not null default '';
 
 create index if not exists idx_mowing_orders_status on mowing_orders(status);
 create index if not exists idx_mowing_orders_updated_at on mowing_orders(updated_at desc);

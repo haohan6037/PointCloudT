@@ -186,6 +186,70 @@
         font-size: 14px;
       }
 
+      .candidate-card {
+        margin: 10px 0 14px;
+        padding: 10px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fffdf8;
+      }
+
+      .candidate-card h3 {
+        margin: 0 0 8px;
+        font-size: 14px;
+      }
+
+      .candidate-help {
+        margin: 0 0 10px;
+        font-size: 12px;
+        line-height: 1.5;
+        color: var(--muted);
+      }
+
+      .candidate-list {
+        display: grid;
+        gap: 8px;
+      }
+
+      .candidate-item {
+        width: 100%;
+        text-align: left;
+        border: 1px solid #d8d0bf;
+        background: #fff;
+        border-radius: 8px;
+        padding: 10px;
+        cursor: pointer;
+      }
+
+      .candidate-item.active {
+        border-color: #16a34a;
+        background: #f1fbf4;
+        box-shadow: inset 0 0 0 1px rgba(22, 163, 74, 0.14);
+      }
+
+      .candidate-item strong {
+        display: block;
+        margin-bottom: 4px;
+        font-size: 13px;
+        color: var(--ink);
+      }
+
+      .candidate-item span {
+        display: block;
+        font-size: 12px;
+        line-height: 1.45;
+        color: var(--muted);
+      }
+
+      .candidate-empty {
+        font-size: 12px;
+        color: var(--muted);
+        padding: 10px;
+        border: 1px dashed #d8d0bf;
+        border-radius: 8px;
+        background: #fff;
+      }
+
       .address-card {
         margin: 10px 0 14px;
         padding: 10px;
@@ -583,6 +647,15 @@
               <li data-step="done"><span class="dot"></span><span>解析完成</span></li>
             </ol>
           </div>
+          <div class="candidate-card">
+            <h3>草坪候选复核</h3>
+            <p class="candidate-help" id="candidateHelp">
+              当前还没有自动草坪候选。生成住宅图后，这里会出现 3 个候选版本供你比较。
+            </p>
+            <div id="candidateList" class="candidate-list">
+              <div class="candidate-empty">等待生成草坪候选</div>
+            </div>
+          </div>
           <div class="layer"><span>基础底图</span><span class="chip base">BASE</span></div>
           <div class="layer"><span>边界</span><span class="chip boundary">BOUNDARY</span></div>
           <div class="layer"><span>禁区</span><span class="chip zone">NO-GO</span></div>
@@ -656,6 +729,8 @@
       const taskProgressFillEl = document.getElementById("taskProgressFill");
       const taskProgressTextEl = document.getElementById("taskProgressText");
       const stepListEl = document.getElementById("stepList");
+      const candidateHelpEl = document.getElementById("candidateHelp");
+      const candidateListEl = document.getElementById("candidateList");
       const mapViewportEl = document.getElementById("mapViewport");
       const mapStageEl = document.getElementById("mapStage");
       const viewScaleBadgeEl = document.getElementById("viewScaleBadge");
@@ -708,6 +783,8 @@
       let boundaryDeleteMode = false;
       let candidateBoundaryPoints = [];
       let candidateSeedPoint = null;
+      let generatedLawnCandidates = [];
+      let activeGeneratedCandidateIndex = -1;
       let projectionModel = null;
       let currentPointCloudStats = null;
       let currentMapContext = null;
@@ -1620,6 +1697,117 @@
         };
       }
 
+      function mapPolygonToOverlay(points, imageWidth, imageHeight) {
+        if (!Array.isArray(points)) return [];
+        return points.map((point) => mapImagePointToOverlay(
+          point,
+          imageWidth,
+          imageHeight,
+          overlayViewWidth,
+          overlayViewHeight
+        ));
+      }
+
+      function clearGeneratedCandidates() {
+        generatedLawnCandidates = [];
+        activeGeneratedCandidateIndex = -1;
+        candidateHelpEl.textContent = "当前还没有自动草坪候选。生成住宅图后，这里会出现 3 个候选版本供你比较。";
+        candidateListEl.innerHTML = '<div class="candidate-empty">等待生成草坪候选</div>';
+      }
+
+      function applyGeneratedCandidate(index, metadata, silent) {
+        if (index < 0 || index >= generatedLawnCandidates.length) return;
+        const candidate = generatedLawnCandidates[index];
+        const imageWidth = candidate.imageWidth || (metadata.crop_image && metadata.crop_image.width) || overlayViewWidth;
+        const imageHeight = candidate.imageHeight || (metadata.crop_image && metadata.crop_image.height) || overlayViewHeight;
+        activeGeneratedCandidateIndex = index;
+        candidateBoundaryPoints = mapPolygonToOverlay(candidate.polygon || [], imageWidth, imageHeight);
+        candidateSeedPoint = null;
+        renderCandidateBoundary();
+        renderGeneratedCandidateList();
+        if (!silent) {
+          statusEl.textContent = "状态：已切换到" + candidate.label + "草坪候选";
+        }
+      }
+
+      function renderGeneratedCandidateList() {
+        if (!generatedLawnCandidates.length) {
+          clearGeneratedCandidates();
+          return;
+        }
+        candidateListEl.innerHTML = "";
+        generatedLawnCandidates.forEach((candidate, index) => {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = "candidate-item" + (index === activeGeneratedCandidateIndex ? " active" : "");
+          const areaText = Number.isFinite(candidate.selected_area_m2)
+            ? candidate.selected_area_m2.toFixed(1) + " m2"
+            : "面积待定";
+          button.innerHTML =
+            "<strong>" + candidate.label + "</strong>" +
+            "<span>" + areaText + " · 候选块 " + String(index + 1) + "</span>" +
+            "<span>" + candidate.description + "</span>";
+          button.addEventListener("click", () => {
+            if (!currentMapContext) return;
+            applyGeneratedCandidate(index, currentMapContext, false);
+          });
+          candidateListEl.appendChild(button);
+        });
+      }
+
+      async function loadGeneratedLawnCandidate(bundle, metadata) {
+        if (!bundle.lawn_summary_url) {
+          return { loaded: false, failed: false, message: "当前生成任务没有草坪候选摘要" };
+        }
+        try {
+          const lawnSummary = await fetchJsonNoStore(operatorApiBase + bundle.lawn_summary_url);
+          const imageWidth = lawnSummary.image && lawnSummary.image.width ? lawnSummary.image.width : metadata.crop_image.width;
+          const imageHeight = lawnSummary.image && lawnSummary.image.height ? lawnSummary.image.height : metadata.crop_image.height;
+          const rawCandidates = Array.isArray(lawnSummary.candidates) && lawnSummary.candidates.length
+            ? lawnSummary.candidates
+            : [{
+                key: "balanced",
+                label: "默认版",
+                description: "兼容旧版单候选输出",
+                selected_area_m2: lawnSummary.selected_area_m2,
+                polygon: Array.isArray(lawnSummary.polygon) ? lawnSummary.polygon : []
+              }];
+          generatedLawnCandidates = rawCandidates
+            .filter((candidate) => Array.isArray(candidate.polygon) && candidate.polygon.length >= 3)
+            .map((candidate) => ({
+              ...candidate,
+              imageWidth,
+              imageHeight
+            }));
+          const defaultIndex = Number.isInteger(lawnSummary.default_candidate_index)
+            ? Math.max(0, Math.min(generatedLawnCandidates.length - 1, lawnSummary.default_candidate_index))
+            : 0;
+          if (generatedLawnCandidates.length) {
+            candidateHelpEl.textContent = "系统已生成多个草坪候选。先点左侧版本切换预览，再决定采用哪个。";
+            applyGeneratedCandidate(defaultIndex, metadata, true);
+          } else {
+            candidateBoundaryPoints = [];
+            candidateSeedPoint = null;
+            renderCandidateBoundary();
+            clearGeneratedCandidates();
+          }
+          return {
+            loaded: generatedLawnCandidates.length > 0,
+            failed: false,
+            summary: lawnSummary,
+          };
+        } catch (error) {
+          clearGeneratedCandidates();
+          candidateBoundaryPoints = [];
+          renderCandidateBoundary();
+          return {
+            loaded: false,
+            failed: true,
+            message: "草坪候选摘要读取失败",
+          };
+        }
+      }
+
       function applyProjectionBackgroundImage(src) {
         projectionLayerEl.dataset.viewLabel = "2D 高质量真彩点云底图";
         projectionLayerEl.style.backgroundImage = 'url("' + src + '")';
@@ -1661,20 +1849,36 @@
         boundaryClosedShape = null;
         candidateBoundaryPoints = [];
         candidateSeedPoint = null;
+        clearGeneratedCandidates();
+        const lawnCandidate = await loadGeneratedLawnCandidate(bundle, metadata);
         renderBoundary();
-        renderCandidateBoundary();
         resetNoGoDrawing(true);
         resetCorridorDrawing(true);
-        setActiveTool("");
+        setActiveTool("boundary");
         resetSteps();
         setStepState("queued", "done");
         setStepState("parsing", "done");
         setStepState("done", "done");
         setBadge("完成", "success");
-        setTaskProgress(100, "高质量点云底图已生成完成");
-        taskSummaryEl.textContent = "高质量底图已就绪";
-        statusEl.textContent = "状态：高质量底图已生成，请输入住宅地址进行下一步裁剪";
-        addressHintEl.textContent = "底图已生成完成。下一步输入住宅地址，再做住宅范围切割。";
+        if (lawnCandidate.loaded) {
+          setTaskProgress(100, "高质量点云底图与 3 个草坪候选已生成完成");
+          taskSummaryEl.textContent = "高质量底图与草坪候选已就绪";
+          statusEl.textContent = "状态：已生成多个草坪候选，点击左侧列表切换预览";
+          if (lawnCandidate.summary) {
+            groundSampleCountEl.textContent = String(lawnCandidate.summary.candidate_count || lawnCandidate.summary.component_count || 0);
+          }
+          addressHintEl.textContent = "当前已自动生成多个草坪候选。先切换预览，再决定是否接受候选边界进入微调。";
+        } else if (bundle.lawn_status === "failed" || lawnCandidate.failed) {
+          setTaskProgress(100, "高质量点云底图已生成，但草坪候选未成功生成");
+          taskSummaryEl.textContent = "高质量底图已就绪，草坪候选失败";
+          statusEl.textContent = "状态：底图已生成，但这次草坪候选没有成功识别";
+          addressHintEl.textContent = "底图已就绪。草坪候选识别失败，需要继续排查识别参数或数据条件。";
+        } else {
+          setTaskProgress(100, "高质量点云底图已生成完成");
+          taskSummaryEl.textContent = "高质量底图已就绪";
+          statusEl.textContent = "状态：高质量底图已生成，请继续下一步";
+          addressHintEl.textContent = "底图已生成完成。下一步可以继续做住宅裁剪或草坪确认。";
+        }
       }
 
       async function pollTopviewJob(jobId, file) {
@@ -1704,6 +1908,7 @@
       async function startHighQualityTopviewGeneration(file) {
         activeTopviewJobId = "";
         currentGeneratedBundle = null;
+        clearGeneratedCandidates();
         resetSteps();
         resetBoundaryDrawing();
         resetNoGoDrawing(true);

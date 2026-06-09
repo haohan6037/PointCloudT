@@ -125,17 +125,86 @@ cp mowing-platform/.env.example mowing-platform/.env
 - 已完成结算建议和完工自动跳转归档，归档页可自动预填金额拆分和备注模板。
 - 已完成录单时间控件改造，新建订单时改用日期与时间控件，不再手动输入时间字符串。
 - 已完成阶段 1 验收视图，可直接查看样本覆盖、主流程通过情况和推荐演示路径。
-- 当前仍属于阶段 1 原型，尚未覆盖用户端、服务商端独立登录、支付结算、机器人维护任务和自动调度。
+- 已修复用户端 `/customer` 路由加载问题，入口改为显式加载本地 `routes.py`，并补装 `python-multipart` 以支持用户端表单上传。
+- 已完成运营改派，订单详情中可选择新服务商改派，时间线记录改派前后服务商姓名。
+- 已完成运营取消订单，非已完成和非已取消状态的订单都可取消，支持填写取消原因。
+- 已完成服务商拒单，已派单或已接单状态可标记拒单，订单自动回到已报价待派单状态。
+- 已完成地址自动补全，对接奥克兰市议会 ArcGIS 地址服务，输入 3 个字符即可搜索真实地址。
+- 已完成智能派单推荐，后端通过地址→NZTM坐标转换计算各服务商距离，派单页和订单详情按距离排序显示推荐服务商。
+- 已完成服务商经纬度管理，编辑服务商资料时可填写 lat/lng，用于距离计算。
+- 已完成订单编辑，运营人员可在订单详情中修改客户姓名、电话、地址、服务类型、时间、草坪信息和备注。
+- 已完成内部备注，运营人员可在每个订单上记录内部沟通内容，独立于客户备注，客户不可见。
+- 已完成用户端页面（customer.html），支持在线下单、照片上传、报价确认/拒绝。
+- 已完成客户 API（提交订单、查订单、确认/拒绝报价），新增 accepted_by_customer 状态。
+- 已完成代码重构：Python 6 文件 + JS 6 文件 + 独立 CSS，注释统一双语风格。
+- 已完成自动化测试（37 个用例）和 GitHub Actions CI/CD 流水线。
+- 当前阶段 1 管理端已完整，阶段 2 用户端已起步，尚未覆盖服务商端独立登录、支付结算、机器人维护任务。
 
-## 今日工作总结
+## 工作总结（2026-06-09 ~ 2026-06-10）
 
-- 补完了第一期后台原型的主要闭环，当前可以从订单录入、报价、派单、服务执行一路走到完成归档。
-- 新增了服务商工作台、运营日报、阶段验收视图，以及完成归档和结算建议能力，方便内部汇报和演示。
-- 将完工流程调整为先进入待质量审核，再由平台审核通过或打回补做，并补了异常处理入口。
-- 后端已接入本地 PostgreSQL `MyGardenOSManagementSyetem`，当前可直接读取和写入开发数据。
+### 代码重构
+- **Python 拆分**：`app.py`（1921 行）→ `data.py` + `models.py` + `address_service.py` + `store.py` + `routes.py` + `app.py`（7 行入口）。
+- **JS 拆分**：`admin-app.js`（3009 行）→ `js/constants.js` + `utils.js` + `autocomplete.js` + `render.js` + `api.js` + `app.js`，通过 `<script>` 标签按顺序加载。
+- **CSS 提取**：`admin-prototype.html` 内嵌 1380 行样式 → `css/admin.css`，HTML 从 1808 行缩减到 390 行。
+- **注释规范**：全部统一为双语 `# EN / 中文` 或 `// EN / 中文`。
+
+### 自动化测试与 CI/CD
+- `tests/test_store.py`：24 个单元测试，覆盖 InMemoryStore 全部核心方法。
+- `tests/test_routes.py`：13 个集成测试，覆盖全部 API 端点与生命周期。
+- `tests/conftest.py`：共享夹具（`store` / `client` / `sample_order_data`）。
+- `.github/workflows/ci.yml`：push/PR 自动运行 pytest + ruff lint，覆盖率要求 ≥70%。
+- `pyproject.toml`：pytest + ruff 配置。
+- Python 3.9 兼容性修复（`str | None` → `Optional[str]`）。
+
+### 用户端（阶段 2 起步）
+- 新增 `customer.html`（416 行）：服务类型选择、地址自动补全、照片拖拽上传、订单提交。
+- 订单跟踪：输入手机号查看历史订单，`quoted` 状态下可「接受报价」或「拒绝」。
+- 新增 `accepted_by_customer` 订单状态，完整流程：`pending_review → quoted → accepted_by_customer → assigned → …`。
+- 新增 5 个客户 API：
+  - `POST /api/customer/orders` — 提交订单（Form + 文件上传）
+  - `GET /api/customer/orders?phone=` — 按手机号查订单
+  - `POST /api/customer/orders/{id}/confirm` — 确认报价
+  - `POST /api/customer/orders/{id}/reject` — 拒绝报价
+  - `GET /customer` — 用户端页面
+- 管理端同步适配：筛选器加入「客户已确认」状态，新增 CSS 样式。
+
+### 订单列表 CSV 导出
+- 订单管理页顶部新增「导出 CSV」按钮，按当前筛选条件导出 21 列完整数据。
+- 提取公用 `downloadCsv()` 函数，归档导出同步简化。
+
+## 当前项目结构
+
+```
+mowing-platform/
+├── app.py                    # 7 行入口
+├── data.py                   # 种子数据（WORKERS, SEED_ORDERS）
+├── models.py                 # Pydantic 模型（16 个类）
+├── address_service.py        # 奥克兰地址服务 + haversine
+├── store.py                  # InMemoryStore + PostgresStore
+├── routes.py                 # FastAPI 路由 + PlatformService
+├── schema.sql                # PostgreSQL 建表
+├── customer.html             # 用户端页面
+├── admin-prototype.html      # 管理端页面（390 行纯标记）
+├── admin-app.js              # 原始 JS（保留参考，已拆分为 js/）
+├── css/admin.css             # 管理端样式
+├── js/
+│   ├── constants.js          # 状态标签常量
+│   ├── utils.js              # 工具函数 + 共享状态
+│   ├── autocomplete.js       # 地址自动补全组件
+│   ├── render.js             # 所有渲染函数
+│   ├── api.js                # API 请求函数
+│   └── app.js                # 事件绑定 + bootstrap
+├── tests/
+│   ├── conftest.py           # 测试夹具
+│   ├── test_store.py         # 24 个 Store 单元测试
+│   └── test_routes.py        # 13 个路由集成测试
+├── uploads/                  # 用户上传照片
+└── pyproject.toml            # pytest + ruff 配置
+```
 
 ## 下一步安排
 
-1. 补完改派、取消、关闭订单等运营动作，让后台更接近真实调度台。
-2. 继续整理演示数据，确保每个关键状态都有可讲的样本。
-3. 如需要对外汇报，再把阶段 1 的能力边界整理成更适合领导阅读的简版说明。
+1. 用户端完善：用户注册/登录（短信验证）、服务进度实时查看、评价系统。
+2. 服务商端：独立登录、今日任务、到场打卡、服务前后照片上传、收入查看。
+3. 支付与结算：对接 Stripe/PoliPay，自动分账。
+4. 产品线 A（点云→2D 地图）：管理端稳定后恢复官方边界裁切开发。

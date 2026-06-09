@@ -213,6 +213,127 @@ function suggestWorkers(order) {
   return (matched.length ? matched : candidates).slice(0, 3);
 }
 
+let workerSuggestCache = null;
+
+async function suggestWorkersByDistance(address) {
+  if (!address || address.trim().length < 3) return null;
+  try {
+    const result = await request("/api/workers/suggest", {
+      method: "POST",
+      body: JSON.stringify({ q: address }),
+    });
+    workerSuggestCache = result;
+    return result;
+  } catch (_err) {
+    return null;
+  }
+}
+
+function workerDistance(workerId) {
+  if (!workerSuggestCache) return null;
+  const w = workerSuggestCache.workers.find((item) => item.id === workerId);
+  return w ? w.distance_km : null;
+}
+
+function formatDistance(km) {
+  if (km === null || km === undefined) return "";
+  if (km < 1) return `${(km * 1000).toFixed(0)}m`;
+  return `${km}km`;
+}
+
+// ── Address autocomplete ──
+
+let autocompleteTimer = null;
+const AUTOCOMPLETE_DEBOUNCE_MS = 300;
+
+function setupAddressAutocomplete(inputEl, dropdownEl) {
+  let activeIndex = -1;
+
+  function hide() {
+    dropdownEl.classList.remove("open");
+    dropdownEl.innerHTML = "";
+    activeIndex = -1;
+  }
+
+  function select(item) {
+    inputEl.value = item.address;
+    hide();
+    inputEl.focus();
+    // Trigger suggest update for dispatch
+    suggestWorkersByDistance(item.address);
+  }
+
+  async function fetchSuggestions(query) {
+    if (query.length < 3) {
+      hide();
+      return;
+    }
+    dropdownEl.innerHTML = '<div class="autocomplete-loading">搜索地址中…</div>';
+    dropdownEl.classList.add("open");
+    try {
+      const results = await request("/api/address/autocomplete", {
+        method: "POST",
+        body: JSON.stringify({ q: query }),
+      });
+      if (!results.length) {
+        dropdownEl.innerHTML = '<div class="autocomplete-loading">未找到匹配地址</div>';
+        return;
+      }
+      activeIndex = -1;
+      dropdownEl.innerHTML = results
+        .map(
+          (item, idx) =>
+            `<button class="autocomplete-item" type="button" data-idx="${idx}">${item.address}</button>`,
+        )
+        .join("");
+      dropdownEl.querySelectorAll(".autocomplete-item").forEach((btn) => {
+        btn.addEventListener("mousedown", (e) => {
+          e.preventDefault();
+          select(results[Number(btn.dataset.idx)]);
+        });
+      });
+    } catch (_err) {
+      dropdownEl.innerHTML = '<div class="autocomplete-loading">地址服务暂不可用</div>';
+    }
+  }
+
+  inputEl.addEventListener("input", () => {
+    clearTimeout(autocompleteTimer);
+    autocompleteTimer = setTimeout(() => fetchSuggestions(inputEl.value.trim()), AUTOCOMPLETE_DEBOUNCE_MS);
+  });
+
+  inputEl.addEventListener("keydown", (e) => {
+    const items = dropdownEl.querySelectorAll(".autocomplete-item");
+    if (!items.length) return;
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      activeIndex = Math.min(activeIndex + 1, items.length - 1);
+      items.forEach((item, idx) => item.classList.toggle("active", idx === activeIndex));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      activeIndex = Math.max(activeIndex - 1, 0);
+      items.forEach((item, idx) => item.classList.toggle("active", idx === activeIndex));
+    } else if (e.key === "Enter" && activeIndex >= 0) {
+      e.preventDefault();
+      items[activeIndex].click();
+    } else if (e.key === "Escape") {
+      hide();
+    }
+  });
+
+  inputEl.addEventListener("blur", () => {
+    setTimeout(hide, 200);
+  });
+}
+
+function initAutocomplete() {
+  const addressInput = document.getElementById("createAddress");
+  const addressDropdown = document.getElementById("createAddressDropdown");
+  if (addressInput && addressDropdown) {
+    setupAddressAutocomplete(addressInput, addressDropdown);
+  }
+}
+
 function serviceChecklistItems(order) {
   const items = [];
   items.push(`确认上门时间窗：${order.requestedTime || "待确认"}`);
@@ -353,7 +474,11 @@ function renderDispatchOrders(items) {
           <div>
             <div class="suggestion-row">
               ${candidates
-                .map((worker) => `<span class="suggestion-chip">${worker.name} · ${worker.area}</span>`)
+                .map((worker) => {
+                  const dist = workerDistance(worker.id);
+                  const distText = dist !== null ? ` ${formatDistance(dist)}` : "";
+                  return `<span class="suggestion-chip">${worker.name} · ${worker.area}${distText}</span>`;
+                })
                 .join("")}
             </div>
           </div>
@@ -378,11 +503,15 @@ function renderDispatchOrders(items) {
                 <option value="">请选择服务商</option>
                 ${candidates
                   .map(
-                    (worker) => `
-                      <option value="${worker.id}" ${worker.id === order.assignedWorkerId ? "selected" : ""}>
-                        ${worker.name} · ${worker.area}
-                      </option>
-                    `,
+                    (worker) => {
+                      const dist = workerDistance(worker.id);
+                      const distText = dist !== null ? ` (${formatDistance(dist)})` : "";
+                      return `
+                        <option value="${worker.id}" ${worker.id === order.assignedWorkerId ? "selected" : ""}>
+                          ${worker.name} · ${worker.area}${distText}
+                        </option>
+                      `;
+                    },
                   )
                   .join("")}
               </select>
@@ -1647,6 +1776,63 @@ function renderDetail() {
       <div class="photo-strip">
         ${order.photos.map((photo) => `<div class="photo">${photo}</div>`).join("")}
       </div>
+      <button class="btn" type="button" id="toggleEditBtn" style="margin-top: 10px;">编辑订单信息</button>
+      <div id="editOrderForm" style="display: none; margin-top: 12px;">
+        <div class="form-grid">
+          <div class="field">
+            <label for="editUser">客户姓名</label>
+            <input class="input" id="editUser" type="text" value="${order.user || ""}" />
+          </div>
+          <div class="field">
+            <label for="editPhone">联系电话</label>
+            <input class="input" id="editPhone" type="text" value="${order.phone || ""}" />
+          </div>
+          <div class="field full">
+            <label for="editAddress">服务地址</label>
+            <input class="input" id="editAddress" type="text" value="${order.address || ""}" />
+          </div>
+          <div class="field">
+            <label for="editServiceType">服务类型</label>
+            <select class="select" id="editServiceType">
+              <option value="一次性割草" ${order.serviceType === "一次性割草" ? "selected" : ""}>一次性割草</option>
+              <option value="定期割草预约" ${order.serviceType === "定期割草预约" ? "selected" : ""}>定期割草预约</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="editRequestedDate">服务日期</label>
+            <input class="input" id="editRequestedDate" type="date" value="${orderDate(order)}" />
+          </div>
+          <div class="field">
+            <label for="editRequestedStart">开始时间</label>
+            <input class="input" id="editRequestedStart" type="time" value="${parseRequestedWindow(order.requestedTime).start}" />
+          </div>
+          <div class="field">
+            <label for="editRequestedEnd">结束时间</label>
+            <input class="input" id="editRequestedEnd" type="time" value="${parseRequestedWindow(order.requestedTime).end}" />
+          </div>
+          <div class="field">
+            <label for="editLawnSize">草坪面积</label>
+            <input class="input" id="editLawnSize" type="text" value="${order.lawnSize || ""}" />
+          </div>
+          <div class="field full">
+            <label for="editCondition">现场情况</label>
+            <textarea class="textarea" id="editCondition">${order.condition || ""}</textarea>
+          </div>
+          <div class="field full">
+            <label for="editNote">客户备注</label>
+            <textarea class="textarea" id="editNote">${order.note || ""}</textarea>
+          </div>
+          <button class="btn primary" type="button" id="saveEditBtn">保存修改</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="detail-section">
+      <h4>内部备注</h4>
+      <div class="form-grid">
+        <textarea class="textarea" id="internalNoteInput" placeholder="运营人员内部备注，客户不可见。">${order.internalNote || ""}</textarea>
+        <button class="btn" type="button" id="saveInternalNoteBtn">保存内部备注</button>
+      </div>
     </section>
 
     <section class="detail-section">
@@ -1699,8 +1885,12 @@ function renderDetail() {
       <div class="detail-grid">
         <span>当前派单</span><strong>${assignedWorker}</strong>
         <span>服务商状态</span><strong>${statusLabels[order.status] || (order.assignedWorkerId ? "已分配" : "待分配")}</strong>
-        <span>推荐服务商</span><strong>${recommendedWorkers.map((worker) => worker.name).join("、") || "暂无推荐"}</strong>
-        <span>推荐依据</span><strong>${recommendedWorkers.length ? `${orderArea(order)} / 当前可接单 / 优先匹配区域` : "当前没有可接单服务商"}</strong>
+        <span>推荐服务商</span><strong>${recommendedWorkers.map((worker) => {
+          const dist = workerDistance(worker.id);
+          const distText = dist !== null ? ` (${formatDistance(dist)})` : "";
+          return `${worker.name}${distText}`;
+        }).join("、") || "暂无推荐"}</strong>
+        <span>推荐依据</span><strong>${recommendedWorkers.length ? `${orderArea(order)} / 距离优先 / 当前可接单` : "当前没有可接单服务商"}</strong>
       </div>
       <div class="form-grid" style="margin-top: 12px;">
         <div class="field">
@@ -1718,12 +1908,23 @@ function renderDetail() {
               .join("")}
           </select>
         </div>
-        <button class="btn primary" type="button" id="assignBtn">保存派单</button>
-        <button class="btn" type="button" id="acceptBtn">标记服务商已接单</button>
-        ${order.status === "accepted_by_worker" ? '<button class="btn" type="button" id="startServiceBtn">标记服务中</button>' : ""}
-        ${order.status === "in_service" ? '<button class="btn primary" type="button" id="completeServiceBtn">提交待审核</button>' : ""}
-      </div>
-    </section>
+          <button class="btn primary" type="button" id="assignBtn">保存派单</button>
+          ${order.assignedWorkerId && order.status !== "cancelled" && order.status !== "completed" ? '<button class="btn" type="button" id="reassignBtn">改派给选中服务商</button>' : ""}
+          <button class="btn" type="button" id="acceptBtn">标记服务商已接单</button>
+          ${order.status === "accepted_by_worker" ? '<button class="btn" type="button" id="startServiceBtn">标记服务中</button>' : ""}
+          ${order.status === "in_service" ? '<button class="btn primary" type="button" id="completeServiceBtn">提交待审核</button>' : ""}
+          ${order.assignedWorkerId && (order.status === "assigned" || order.status === "accepted_by_worker") ? '<button class="btn" type="button" id="rejectBtn" style="color: var(--danger); border-color: var(--danger);">标记服务商拒单</button>' : ""}
+        </div>
+      </section>
+
+      ${order.status !== "cancelled" && order.status !== "completed" ? `
+        <section class="detail-section">
+          <h4>订单操作</h4>
+          <div class="form-grid" style="margin-top: 0;">
+            <button class="btn" type="button" id="cancelOrderBtn" style="color: var(--danger); border-color: var(--danger);">取消订单</button>
+          </div>
+        </section>
+      ` : ""}
 
     ${checklistSection}
 
@@ -1756,9 +1957,12 @@ function renderDetail() {
   document.getElementById("saveQuoteBtn").addEventListener("click", saveQuote);
   document.getElementById("saveOpsBtn").addEventListener("click", saveOrderOps);
   document.getElementById("assignBtn").addEventListener("click", assignWorker);
+  document.getElementById("reassignBtn")?.addEventListener("click", reassignWorker);
   document.getElementById("acceptBtn").addEventListener("click", acceptByWorker);
   document.getElementById("startServiceBtn")?.addEventListener("click", startService);
   document.getElementById("completeServiceBtn")?.addEventListener("click", completeService);
+  document.getElementById("rejectBtn")?.addEventListener("click", rejectOrder);
+  document.getElementById("cancelOrderBtn")?.addEventListener("click", cancelOrder);
   document.getElementById("saveServiceLogBtn")?.addEventListener("click", saveServiceLog);
   document.getElementById("openExceptionBtn")?.addEventListener("click", openExceptionCase);
   document.getElementById("resumeExceptionBtn")?.addEventListener("click", resumeExceptionCase);
@@ -1767,6 +1971,35 @@ function renderDetail() {
   document.getElementById("reworkQualityBtn")?.addEventListener("click", reworkQualityReview);
   document.getElementById("fillCompletionSuggestionBtn")?.addEventListener("click", applySettlementSuggestionToDetail);
   document.getElementById("saveCompletionDetailBtn")?.addEventListener("click", saveCompletionFromDetail);
+  document.getElementById("toggleEditBtn")?.addEventListener("click", toggleEditForm);
+  document.getElementById("saveEditBtn")?.addEventListener("click", saveOrderEdit);
+  document.getElementById("saveInternalNoteBtn")?.addEventListener("click", saveInternalNote);
+
+  // Trigger async distance lookup for worker suggestions
+  if (order.address) {
+    suggestWorkersByDistance(order.address).then(() => {
+      // Refresh the worker select dropdown if still on the same order
+      const current = selectedOrder();
+      if (current && current.id === order.id) {
+        const recommendedWorkers = suggestWorkers(order);
+        const select = document.getElementById("workerSelect");
+        if (select && recommendedWorkers.length) {
+          const currentValue = select.value;
+          select.innerHTML = [
+            '<option value="">未派单</option>',
+            ...recommendedWorkers.map(
+              (worker) => {
+                const dist = workerDistance(worker.id);
+                const distText = dist !== null ? ` (${formatDistance(dist)})` : "";
+                return `<option value="${worker.id}" ${worker.id === currentValue ? "selected" : ""}>${worker.name} · ${worker.area}${distText}</option>`;
+              },
+            ),
+          ].join("");
+          if (!select.value) select.value = recommendedWorkers[0].id;
+        }
+      }
+    });
+  }
 }
 
 function renderWorkersView() {
@@ -2081,6 +2314,8 @@ function openWorkerModal(workerId) {
   workerProfileForm.elements.area.value = worker.area || "";
   workerProfileForm.elements.approvalStatus.value = worker.approvalStatus || "approved";
   workerProfileForm.elements.serviceNote.value = worker.serviceNote || "";
+  workerProfileForm.elements.lat.value = worker.lat ?? "";
+  workerProfileForm.elements.lng.value = worker.lng ?? "";
   workerModal.classList.add("open");
   workerModal.setAttribute("aria-hidden", "false");
   document.getElementById("workerName").focus();
@@ -2350,6 +2585,101 @@ async function updateOrderStatus(orderId, status) {
   hydrate(payload);
 }
 
+async function reassignWorker() {
+  const order = selectedOrder();
+  const workerId = document.getElementById("workerSelect").value;
+  if (!workerId) {
+    alert("请选择可接单服务商。");
+    return;
+  }
+  if (workerId === order.assignedWorkerId) {
+    alert("改派目标不能与当前服务商相同。");
+    return;
+  }
+  const payload = await request(`/api/orders/${order.id}/reassign`, {
+    method: "POST",
+    body: JSON.stringify({ workerId }),
+  });
+  hydrate(payload);
+}
+
+async function cancelOrder() {
+  const order = selectedOrder();
+  if (!window.confirm(`确认取消订单 ${order.id}？取消后无法恢复。`)) {
+    return;
+  }
+  const note = window.prompt("取消原因（可选）：");
+  const payload = await request(`/api/orders/${order.id}/cancel`, {
+    method: "POST",
+    body: JSON.stringify({ note: note || "" }),
+  });
+  hydrate(payload);
+}
+
+async function saveInternalNote() {
+  const order = selectedOrder();
+  const note = document.getElementById("internalNoteInput")?.value ?? "";
+  const payload = await request(`/api/orders/${order.id}/internal-note`, {
+    method: "POST",
+    body: JSON.stringify({ note }),
+  });
+  hydrate(payload);
+}
+
+function toggleEditForm() {
+  const form = document.getElementById("editOrderForm");
+  if (form) {
+    form.style.display = form.style.display === "none" ? "block" : "none";
+  }
+}
+
+async function saveOrderEdit() {
+  const order = selectedOrder();
+  const payload = {};
+  const fields = ["createUser", "createPhone", "createAddress", "createServiceType", "createRequestedDate", "createRequestedStart", "createRequestedEnd", "createLawnSize", "createCondition", "createNote"];
+  const editIds = ["editUser", "editPhone", "editAddress", "editServiceType", "editRequestedDate", "editRequestedStart", "editRequestedEnd", "editLawnSize", "editCondition", "editNote"];
+  const attrs = ["user", "phone", "address", "serviceType", null, null, null, "lawnSize", "condition", "note"];
+
+  for (let i = 0; i < fields.length; i++) {
+    const el = document.getElementById(editIds[i]);
+    if (!el) continue;
+    const val = el.value?.trim() ?? "";
+    if (attrs[i] && val) payload[attrs[i]] = val;
+  }
+
+  // Handle requestedTime from date+time controls
+  const dateEl = document.getElementById("editRequestedDate");
+  const startEl = document.getElementById("editRequestedStart");
+  const endEl = document.getElementById("editRequestedEnd");
+  if (dateEl && startEl && endEl) {
+    const date = dateEl.value;
+    const start = startEl.value;
+    const end = endEl.value;
+    if (date && start && end) payload.requestedTime = `${date} ${start}-${end}`;
+  }
+
+  if (!Object.keys(payload).length) {
+    alert("没有修改任何字段。");
+    return;
+  }
+
+  const result = await request(`/api/orders/${order.id}`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+  hydrate(result);
+  document.getElementById("editOrderForm").style.display = "none";
+}
+
+async function rejectOrder() {
+  const order = selectedOrder();
+  if (!window.confirm(`确认以服务商身份拒单 ${order.id}？拒单后订单将回到待派单状态。`)) {
+    return;
+  }
+  const payload = await request(`/api/orders/${order.id}/reject`, { method: "POST" });
+  hydrate(payload);
+}
+
 async function startService() {
   const order = selectedOrder();
   await updateOrderStatus(order.id, "in_service");
@@ -2430,6 +2760,64 @@ function csvEscape(value) {
   return `"${text.replaceAll('"', '""')}"`;
 }
 
+function buildCsvBlob(headers, rows, filename) {
+  const content = [headers, ...rows].map((row) => row.map(csvEscape).join(",")).join("\n");
+  return { blob: new Blob([`\uFEFF${content}`], { type: "text/csv;charset=utf-8;" }), filename };
+}
+
+function downloadCsv(headers, rows, filename) {
+  const { blob } = buildCsvBlob(headers, rows, filename);
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function exportOrdersCsv() {
+  const items = filteredOrders();
+  if (!items.length) {
+    alert("当前筛选下没有可导出的订单。");
+    return;
+  }
+  const headers = [
+    "订单号", "状态", "优先级", "运营标签",
+    "客户", "电话", "地址",
+    "服务类型", "预约时间", "草坪面积", "现场情况", "客户备注",
+    "报价金额", "价格说明", "服务商", "实收金额",
+    "平台分成", "服务商应结", "结算状态",
+    "内部备注", "更新时间",
+  ];
+  const rows = items.map((order) => [
+    order.id,
+    statusLabels[order.status] || order.status,
+    priorityLabel(order.priorityLevel),
+    order.opsTag || "",
+    order.user,
+    order.phone,
+    order.address,
+    order.serviceType,
+    order.requestedTime,
+    order.lawnSize,
+    order.condition,
+    order.note || "",
+    order.price || "",
+    order.priceNote || "",
+    workerName(order.assignedWorkerId),
+    order.actualAmount || "",
+    order.platformShare || "",
+    order.workerPayout || "",
+    settlementLabel(order.settlementStatus),
+    order.internalNote || "",
+    order.updatedAt,
+  ]);
+  const dateTag = new Date().toISOString().slice(0, 10);
+  downloadCsv(headers, rows, `orders-export-${dateTag}.csv`);
+}
+
 function exportArchiveCsv() {
   const items = filteredArchivedOrders();
   if (!items.length) {
@@ -2468,17 +2856,8 @@ function exportArchiveCsv() {
     order.settledAt || "",
     order.completionNote || "",
   ]);
-  const content = [headers, ...rows].map((row) => row.map(csvEscape).join(",")).join("\n");
-  const blob = new Blob([`\uFEFF${content}`], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
   const dateTag = new Date().toISOString().slice(0, 10);
-  link.href = url;
-  link.download = `archive-export-${dateTag}.csv`;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
+  downloadCsv(headers, rows, `archive-export-${dateTag}.csv`);
 }
 
 async function resetDemo() {
@@ -2562,6 +2941,7 @@ document.getElementById("resetBtn").addEventListener("click", async () => {
     alert(error.message);
   }
 });
+document.getElementById("exportOrdersBtn").addEventListener("click", exportOrdersCsv);
 document.getElementById("newOrderBtn").addEventListener("click", async () => {
   try {
     openOrderModal();
@@ -2599,23 +2979,31 @@ createOrderForm.addEventListener("submit", async (event) => {
   }
 });
 workerProfileForm.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  const workerId = workerProfileForm.dataset.workerId;
-  if (!workerId) {
-    return;
-  }
-  const form = new FormData(workerProfileForm);
-  const payload = Object.fromEntries(form.entries());
-  try {
-    await updateWorkerProfile(workerId, payload);
-    closeWorkerModal();
-  } catch (error) {
-    alert(error.message);
-  }
-});
+    event.preventDefault();
+    const workerId = workerProfileForm.dataset.workerId;
+    if (!workerId) {
+      return;
+    }
+    const form = new FormData(workerProfileForm);
+    const payload = Object.fromEntries(form.entries());
+    if (payload.lat !== undefined) {
+      payload.lat = payload.lat === "" ? null : Number(payload.lat);
+    }
+    if (payload.lng !== undefined) {
+      payload.lng = payload.lng === "" ? null : Number(payload.lng);
+    }
+    try {
+      await updateWorkerProfile(workerId, payload);
+      closeWorkerModal();
+    } catch (error) {
+      alert(error.message);
+    }
+  });
 
 bootstrap().catch((error) => {
   dataMode.className = "status-pill fallback";
   dataMode.textContent = "加载失败";
   dataHint.textContent = error.message;
 });
+
+initAutocomplete();
