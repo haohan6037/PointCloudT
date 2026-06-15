@@ -1,0 +1,69 @@
+# CI for Mowing Platform / 割草服务平台持续集成
+name: CI
+
+on:
+  push:
+    branches: [main, master, "codex/**"]
+    paths:
+      - "mowing-platform/**"
+      - ".github/workflows/ci.yml"
+  pull_request:
+    branches: [main, master]
+    paths:
+      - "mowing-platform/**"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    defaults:
+      run:
+        working-directory: mowing-platform
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python / 安装 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies / 安装依赖
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest pytest-cov fastapi uvicorn httpx python-dotenv pydantic python-multipart
+
+      - name: Run unit tests with coverage / 运行单元测试
+        run: |
+          python -m pytest tests/test_store.py -v --tb=short \
+            --cov=. --cov-report=term-missing \
+            --cov-fail-under=70 \
+            -p no:warnings
+
+      - name: Run integration tests / 运行集成测试
+        run: |
+          python -m pytest tests/test_routes.py -v --tb=short \
+            -p no:warnings
+
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    defaults:
+      run:
+        working-directory: mowing-platform
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python / 安装 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install ruff / 安装代码检查工具
+        run: pip install ruff
+
+      - name: Lint Python / 代码风格检查
+        run: ruff check --select=E,F,W --ignore=E501 .

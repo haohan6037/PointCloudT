@@ -1,0 +1,15 @@
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-v --tb=short"
+timeout = 30
+
+[tool.ruff]
+# Code style / 代码风格
+select = ["E", "F", "W"]
+ignore = ["E501"]  # line too long / 行太长
+target-version = "py312"
+
+[tool.ruff.per-file-ignores]
+"__init__.py" = ["F401"]
+"tests/*" = ["F401", "F811"]

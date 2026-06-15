@@ -62,3 +62,20 @@ alter table if exists mowing_orders add column if not exists internal_note text 
 
 create index if not exists idx_mowing_orders_status on mowing_orders(status);
 create index if not exists idx_mowing_orders_updated_at on mowing_orders(updated_at desc);
+
+create table if not exists app_users (
+    email text primary key,
+    clerk_user_id text not null default '',
+    display_name text not null default '',
+    role text not null default 'customer',
+    status text not null default 'active',
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+);
+
+alter table if exists app_users add column if not exists clerk_user_id text not null default '';
+alter table if exists app_users add column if not exists display_name text not null default '';
+alter table if exists app_users add column if not exists role text not null default 'customer';
+alter table if exists app_users add column if not exists status text not null default 'active';
+
+create index if not exists idx_app_users_role on app_users(role);
