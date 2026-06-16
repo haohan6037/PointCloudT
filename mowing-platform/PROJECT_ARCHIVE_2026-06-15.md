@@ -12,10 +12,14 @@
 - Address provider backend has been refactored toward Geoapify integration with environment-variable-based key loading.
 - Tests around address services were expanded to cover request construction and safe fallback behavior.
 
-## Current Known Issue
+## 遗留问题
 
 - The provided Geoapify key currently returns `401 Unauthorized` against the live Geoapify API.
 - Because of that, the production-like address autocomplete / reverse-geocode flow still cannot succeed with live data, even though the integration path and tests are in place.
+- Next time continue from this issue first:
+  1. check whether the current Geoapify key is invalid, restricted by referrer/origin/IP, or missing Geocoding permission
+  2. if the key cannot be fixed quickly, replace it with a new working Geoapify key in local `mowing-platform/.env`
+  3. restart the local service and re-test `/api/address/autocomplete` and `/api/address/reverse-geocode` with live requests
 
 ## Local Secret Handling
 

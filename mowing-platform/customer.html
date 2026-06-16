@@ -206,7 +206,7 @@
   </div><!-- /appContent -->
 </div>
 
-<script src="/mowing-platform/js/clerk-auth.js"></script>
+<script src="/mowing-platform/js/clerk-auth.js?v=20260615-auth-fix"></script>
 <script>
 // ═══════════════════════════════════════════════════
 // Global state / 全局状态
@@ -304,25 +304,29 @@ function loginSuccess() {
 }
 
 window.addEventListener("load", async () => {
-  await window.GardenOSAuth.guardPage({
-    allowedRoles: ["customer", "admin"],
-    mountTargetId: "clerkAuth",
-    loginStatusId: "loginStatus",
-    onUnauthorized() {
-      customerEmail = "";
-      customerProfile = null;
-      appContent.classList.add("hidden");
-      loginCard.classList.remove("hidden");
-      document.getElementById("profileEmail").textContent = "";
-      profileGateNotice.classList.add("hidden");
-      tabBar.classList.remove("hidden");
-    },
-    async onAuthorized({ sessionUser }) {
-      customerEmail = sessionUser.email;
-      customerProfile = await fetchCustomerProfile(customerEmail);
-      loginSuccess();
-    },
-  });
+  try {
+    await window.GardenOSAuth.guardPage({
+      allowedRoles: ["customer", "admin"],
+      mountTargetId: "clerkAuth",
+      loginStatusId: "loginStatus",
+      onUnauthorized() {
+        customerEmail = "";
+        customerProfile = null;
+        appContent.classList.add("hidden");
+        loginCard.classList.remove("hidden");
+        document.getElementById("profileEmail").textContent = "";
+        profileGateNotice.classList.add("hidden");
+        tabBar.classList.remove("hidden");
+      },
+      async onAuthorized({ sessionUser }) {
+        customerEmail = sessionUser.email;
+        customerProfile = await fetchCustomerProfile(customerEmail);
+        loginSuccess();
+      },
+    });
+  } catch (error) {
+    loginStatus.innerHTML = `❌ 初始化失败：${error.message}`;
+  }
 });
 
 document.getElementById("logoutBtn").addEventListener("click", async () => {

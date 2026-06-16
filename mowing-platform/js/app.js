@@ -107,10 +107,7 @@ workerProfileForm.addEventListener("submit", async (event) => {
     }
   });
 
-bootstrap().catch((error) => {
-  dataMode.className = "status-pill fallback";
-  dataMode.textContent = "加载失败";
-  dataHint.textContent = error.message;
-});
+// bootstrap() 已移至 admin-prototype.html 的 onAuthorized 回调中
+// 确保登录成功后才拉取数据
 
 initAutocomplete();

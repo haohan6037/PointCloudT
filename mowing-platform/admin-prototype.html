@@ -413,19 +413,30 @@
         const authShell = document.getElementById("adminAuthShell");
         const appShell = document.getElementById("adminAppShell");
         const logoutBtn = document.getElementById("adminLogoutBtn");
-        await window.GardenOSAuth.guardPage({
-          requiredRole: "admin",
-          mountTargetId: "adminClerkAuth",
-          loginStatusId: "adminLoginStatus",
-          onUnauthorized() {
-            authShell.classList.remove("hidden-auth");
-            appShell.classList.add("hidden-auth");
-          },
-          onAuthorized() {
-            authShell.classList.add("hidden-auth");
-            appShell.classList.remove("hidden-auth");
-          },
-        });
+        try {
+          await window.GardenOSAuth.guardPage({
+            requiredRole: "admin",
+            mountTargetId: "adminClerkAuth",
+            loginStatusId: "adminLoginStatus",
+            onUnauthorized() {
+              authShell.classList.remove("hidden-auth");
+              appShell.classList.add("hidden-auth");
+            },
+            onAuthorized() {
+              authShell.classList.add("hidden-auth");
+              appShell.classList.remove("hidden-auth");
+              // 登录成功后从服务器拉取最新数据
+              bootstrap().catch((error) => {
+                dataMode.className = "status-pill fallback";
+                dataMode.textContent = "加载失败";
+                dataHint.textContent = error.message;
+              });
+            },
+          });
+        } catch (error) {
+          document.getElementById("adminLoginStatus").innerHTML = `❌ 初始化失败：${error.message}`;
+          return;
+        }
         logoutBtn.addEventListener("click", async () => {
           await window.GardenOSAuth.signOut();
         });

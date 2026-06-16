@@ -55,7 +55,7 @@
     </div>
   </div>
 
-  <script src="/mowing-platform/js/clerk-auth.js"></script>
+  <script src="/mowing-platform/js/clerk-auth.js?v=20260615-auth-fix"></script>
   <script>
     const providerAuthCard = document.getElementById("providerAuthCard");
     const providerApp = document.getElementById("providerApp");
@@ -63,22 +63,32 @@
     const providerLogoutBtn = document.getElementById("providerLogoutBtn");
 
     window.addEventListener("load", async () => {
-      await window.GardenOSAuth.guardPage({
-        requiredRole: "provider",
-        mountTargetId: "providerClerkAuth",
-        loginStatusId: "providerLoginStatus",
-        onUnauthorized() {
-          providerAuthCard.classList.remove("hidden");
-          providerApp.classList.add("hidden");
-          providerLogoutBtn.classList.add("hidden");
-        },
-        onAuthorized({ sessionUser }) {
-          providerAuthCard.classList.add("hidden");
-          providerApp.classList.remove("hidden");
-          providerLogoutBtn.classList.remove("hidden");
-          providerIdentity.textContent = `${sessionUser.displayName || sessionUser.email} · ${sessionUser.email}`;
-        },
-      });
+      try {
+        await window.GardenOSAuth.guardPage({
+          requiredRole: "provider",
+          mountTargetId: "providerClerkAuth",
+          loginStatusId: "providerLoginStatus",
+          onUnauthorized() {
+            providerAuthCard.classList.remove("hidden");
+            providerApp.classList.add("hidden");
+            providerLogoutBtn.classList.add("hidden");
+          },
+          onAuthorized({ sessionUser }) {
+            providerAuthCard.classList.add("hidden");
+            providerApp.classList.remove("hidden");
+            providerLogoutBtn.classList.remove("hidden");
+            providerIdentity.textContent = `${sessionUser.displayName || sessionUser.email} · ${sessionUser.email}`;
+            // 登录成功后从服务器拉取最新数据
+            if (typeof bootstrap === "function") {
+              bootstrap().catch((error) => {
+                console.error("数据加载失败:", error);
+              });
+            }
+          },
+        });
+      } catch (error) {
+        document.getElementById("providerLoginStatus").innerHTML = `❌ 初始化失败：${error.message}`;
+      }
     });
 
     providerLogoutBtn.addEventListener("click", async () => {

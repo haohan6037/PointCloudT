@@ -7,7 +7,7 @@ from typing import Any, Optional
 
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 from address_service import AddressService, haversine_m
@@ -114,16 +114,27 @@ app = create_app()
 
 # ── Page & health routes / 页面和健康检查路由 ──────────────────────────
 
+def _inject_clerk_key(html_path: str) -> HTMLResponse:
+    """Read an HTML file and inject the Clerk Publishable Key from env.
+    / 读取 HTML 文件并从环境变量注入 Clerk Publishable Key。"""
+    content = (ROOT / html_path).read_text(encoding="utf-8")
+    clerk_key = os.getenv("Clerk_Public_Key", "").strip().rstrip("$")
+    if clerk_key:
+        tag = f"<script>window.__GARDENOS_CLERK_PUBLISHABLE_KEY__=\"{clerk_key}\";</script>"
+        content = content.replace("</head>", f"  {tag}\n</head>", 1)
+    return HTMLResponse(content)
+
+
 @app.get("/")
-def root() -> FileResponse:
+def root() -> HTMLResponse:
     """Serve admin prototype / 返回管理后台原型页面."""
-    return FileResponse(ROOT / "admin-prototype.html")
+    return _inject_clerk_key("admin-prototype.html")
 
 
 @app.get("/provider")
-def provider_page() -> FileResponse:
+def provider_page() -> HTMLResponse:
     """Serve provider-facing page / 返回服务商端页面."""
-    return FileResponse(ROOT / "provider.html")
+    return _inject_clerk_key("provider.html")
 
 
 @app.get("/api/health")
@@ -410,9 +421,9 @@ def customer_reject_quote(order_id: str) -> dict[str, Any]:
 
 
 @app.get("/customer")
-def customer_page() -> FileResponse:
+def customer_page() -> HTMLResponse:
     """Serve customer-facing page / 返回用户端页面."""
-    return FileResponse(ROOT / "customer.html")
+    return _inject_clerk_key("customer.html")
 
 
 # ── Customer auth / 用户认证 ──────────────────────────────────────────
