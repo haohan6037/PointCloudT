@@ -96,14 +96,57 @@ class TestUserRoles:
         )
         resp = client.put(
             "/api/users/role",
-            json={"email": "provider@example.com", "role": "provider", "status": "active"},
+            json={"email": "provider@example.com", "role": "server", "status": "active"},
+            headers={"X-GardenOS-Actor-Email": "haohan6037@gmail.com"},
         )
         assert resp.status_code == 200
-        assert resp.json()["user"]["role"] == "provider"
+        assert resp.json()["user"]["role"] == "server"
 
         resp = client.get("/api/users/me", params={"email": "provider@example.com"})
         assert resp.status_code == 200
-        assert resp.json()["user"]["role"] == "provider"
+        assert resp.json()["user"]["role"] == "server"
+
+    def test_legacy_provider_role_is_normalized_to_server(self, client):
+        resp = client.put(
+            "/api/users/role",
+            json={"email": "legacy.provider@example.com", "role": "provider", "status": "active"},
+            headers={"X-GardenOS-Actor-Email": "haohan6037@gmail.com"},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["user"]["role"] == "server"
+
+    def test_default_admin_emails_are_initialized_as_admin(self, client):
+        for email in ("haohan6037@gmail.com", "kaiyu.yang@youngproperty.co.nz"):
+            resp = client.post(
+                "/api/session/sync",
+                json={"email": email, "clerkUserId": f"user_{email}", "displayName": email},
+            )
+            assert resp.status_code == 200
+            assert resp.json()["user"]["role"] == "admin"
+
+    def test_user_management_requires_admin_actor(self, client):
+        resp = client.get("/api/users")
+        assert resp.status_code == 403
+
+        client.post(
+            "/api/session/sync",
+            json={"email": "plain.customer@example.com", "clerkUserId": "user_customer", "displayName": "Customer"},
+        )
+        resp = client.get("/api/users", headers={"X-GardenOS-Actor-Email": "plain.customer@example.com"})
+        assert resp.status_code == 403
+
+    def test_admin_actor_can_list_and_update_users(self, client):
+        resp = client.get("/api/users", headers={"X-GardenOS-Actor-Email": "kaiyu.yang@youngproperty.co.nz"})
+        assert resp.status_code == 200
+        assert "users" in resp.json()
+
+        resp = client.put(
+            "/api/users/role",
+            json={"email": "new.server@example.com", "role": "server", "status": "active"},
+            headers={"X-GardenOS-Actor-Email": "kaiyu.yang@youngproperty.co.nz"},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["user"]["role"] == "server"
 
 
 class TestCustomerAuth:

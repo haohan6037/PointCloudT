@@ -59,8 +59,13 @@ if [ ! -d "mowing-platform/.venv" ] && command -v uv &> /dev/null; then
     cd ..
 fi
 
+PYTHON_BIN="python3"
+if [ -x "mowing-platform/.venv/bin/python" ]; then
+    PYTHON_BIN="mowing-platform/.venv/bin/python"
+fi
+
 # ── 启动 uvicorn ────────────────────────────────────────────
-exec python3 -m uvicorn app:app \
+exec "$PYTHON_BIN" -m uvicorn app:app \
     --app-dir mowing-platform \
     --host 127.0.0.1 \
     --port 8011 \

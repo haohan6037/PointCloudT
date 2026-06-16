@@ -56,6 +56,9 @@ document.getElementById("newOrderBtn").addEventListener("click", async () => {
 document.getElementById("openCustomerPortalBtn").addEventListener("click", () => {
   window.location.assign("/customer");
 });
+document.getElementById("openProviderPortalBtn").addEventListener("click", () => {
+  window.location.assign("/provider");
+});
 document.getElementById("closeOrderModalBtn").addEventListener("click", closeOrderModal);
 document.getElementById("cancelOrderModalBtn").addEventListener("click", closeOrderModal);
 orderModal.addEventListener("click", (event) => {

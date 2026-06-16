@@ -22,7 +22,7 @@
 
     <div class="card" id="providerAuthCard">
       <h2>登录后进入服务商端</h2>
-      <p>只有被标记为服务商的账号可以停留在这里。普通用户和管理员登录后会自动跳转到对应入口。</p>
+      <p>服务商账号可以停留在这里；管理员可从后台进入各端查看，普通用户会自动回到客户端入口。</p>
       <div id="providerClerkAuth"></div>
       <div id="providerLoginStatus" style="text-align:center;margin-top:10px;font-size:13px;"></div>
     </div>
@@ -65,7 +65,7 @@
     window.addEventListener("load", async () => {
       try {
         await window.GardenOSAuth.guardPage({
-          requiredRole: "provider",
+          requiredRole: "server",
           mountTargetId: "providerClerkAuth",
           loginStatusId: "providerLoginStatus",
           onUnauthorized() {

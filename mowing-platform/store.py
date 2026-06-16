@@ -22,19 +22,30 @@ except Exception:
 
 DEFAULT_CUSTOMER_EMAIL = "helen.chen@example.com"
 DEFAULT_CUSTOMER_NAME = "Helen Chen"
-VALID_USER_ROLES = {"admin", "customer", "provider"}
+DEFAULT_ADMIN_EMAILS = {"haohan6037@gmail.com", "kaiyu.yang@youngproperty.co.nz"}
+ROLE_ALIASES = {"provider": "server"}
+VALID_USER_ROLES = {"admin", "customer", "server"}
 VALID_USER_STATUSES = {"active", "disabled"}
+
+
+def normalize_user_role(role: str) -> str:
+    """Normalize public user roles / 统一平台角色命名."""
+    normalized = (role or "customer").strip().lower()
+    return ROLE_ALIASES.get(normalized, normalized)
 
 
 def configured_role_for_email(email: str) -> str:
     """Resolve bootstrap role from environment / 从环境变量推断初始角色."""
     normalized = email.strip().lower()
-    admin_emails = {item.strip().lower() for item in os.getenv("ADMIN_EMAILS", "").split(",") if item.strip()}
+    admin_emails = {
+        *DEFAULT_ADMIN_EMAILS,
+        *{item.strip().lower() for item in os.getenv("ADMIN_EMAILS", "").split(",") if item.strip()},
+    }
     provider_emails = {item.strip().lower() for item in os.getenv("PROVIDER_EMAILS", "").split(",") if item.strip()}
     if normalized in admin_emails:
         return "admin"
     if normalized in provider_emails:
-        return "provider"
+        return "server"
     return "customer"
 
 
@@ -51,6 +62,8 @@ class InMemoryStore:
         self.users: dict[str, dict[str, Any]] = {
             DEFAULT_CUSTOMER_EMAIL: self._blank_user(DEFAULT_CUSTOMER_EMAIL, DEFAULT_CUSTOMER_NAME),
         }
+        for admin_email in sorted(DEFAULT_ADMIN_EMAILS):
+            self.users[admin_email] = self._blank_user(admin_email)
 
     def bootstrap(self) -> dict[str, Any]:
         return {"orders": self.orders, "workers": self.workers}
@@ -70,7 +83,7 @@ class InMemoryStore:
 
     @staticmethod
     def _blank_user(email: str, display_name: str = "", clerk_user_id: str = "") -> dict[str, Any]:
-        role = configured_role_for_email(email)
+        role = normalize_user_role(configured_role_for_email(email))
         return {
             "email": email,
             "clerkUserId": clerk_user_id,
@@ -431,6 +444,10 @@ class InMemoryStore:
             user["clerkUserId"] = clerk_user_id
         if display_name:
             user["displayName"] = display_name
+        configured_role = configured_role_for_email(email)
+        user["role"] = normalize_user_role(user.get("role", "customer"))
+        if user["role"] == "customer" and configured_role != "customer":
+            user["role"] = configured_role
         user["updated_at"] = timestamp()
         return user
 
@@ -440,10 +457,12 @@ class InMemoryStore:
 
     def list_users(self) -> list[dict[str, Any]]:
         """List all app users / 列出全部平台用户."""
-        return sorted(self.users.values(), key=lambda item: (item["role"], item["email"]))
+        users = [{**item, "role": normalize_user_role(item.get("role", "customer"))} for item in self.users.values()]
+        return sorted(users, key=lambda item: (item["role"], item["email"]))
 
     def update_user_role(self, email: str, role: str, status: str = "active") -> dict[str, Any]:
         """Update app user role / 更新平台用户角色."""
+        role = normalize_user_role(role)
         if role not in VALID_USER_ROLES:
             raise HTTPException(status_code=400, detail="Unsupported user role")
         if status not in VALID_USER_STATUSES:
@@ -560,7 +579,7 @@ class PostgresStore:
 
     @staticmethod
     def _blank_user(email: str, display_name: str = "", clerk_user_id: str = "") -> dict[str, Any]:
-        role = configured_role_for_email(email)
+        role = normalize_user_role(configured_role_for_email(email))
         return {
             "email": email,
             "clerkUserId": clerk_user_id,
@@ -623,6 +642,21 @@ class PostgresStore:
                         configured_role_for_email(DEFAULT_CUSTOMER_EMAIL),
                     ),
                 )
+                for admin_email in sorted(DEFAULT_ADMIN_EMAILS):
+                    cur.execute(
+                        """
+                        insert into app_users (email, display_name, role, status)
+                        values (%s, %s, 'admin', 'active')
+                        on conflict (email) do update set
+                            role = case
+                                when app_users.role = 'customer' then 'admin'
+                                else app_users.role
+                            end,
+                            status = 'active',
+                            updated_at = now()
+                        """,
+                        (admin_email, ""),
+                    )
                 cur.execute("select count(*) from mowing_orders")
                 if cur.fetchone()[0] == 0:
                     self._seed_orders(cur)
@@ -1376,7 +1410,7 @@ class PostgresStore:
             "email": row[0],
             "clerkUserId": row[1] or "",
             "displayName": row[2] or "",
-            "role": row[3] or "customer",
+            "role": normalize_user_role(row[3] or "customer"),
             "status": row[4] or "active",
             "created_at": row[5].strftime("%Y-%m-%d %H:%M"),
             "updated_at": row[6].strftime("%Y-%m-%d %H:%M"),
@@ -1512,6 +1546,7 @@ class PostgresStore:
 
     def update_user_role(self, email: str, role: str, status: str = "active") -> dict[str, Any]:
         """Update app user role / 更新平台用户角色."""
+        role = normalize_user_role(role)
         if role not in VALID_USER_ROLES:
             raise HTTPException(status_code=400, detail="Unsupported user role")
         if status not in VALID_USER_STATUSES:

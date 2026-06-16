@@ -1884,6 +1884,7 @@ function renderActiveView() {
   const dispatchMode = activeView === "dispatch";
   const archiveMode = activeView === "archive";
   const workerMode = activeView === "workers";
+  const usersMode = activeView === "users";
   const acceptanceMode = activeView === "acceptance";
   ordersView.classList.toggle("hidden", !orderMode);
   metricsSection.classList.toggle("hidden", !orderMode);
@@ -1891,6 +1892,7 @@ function renderActiveView() {
   dispatchView.classList.toggle("hidden", !dispatchMode);
   archiveView.classList.toggle("hidden", !archiveMode);
   workersView.classList.toggle("hidden", !workerMode);
+  usersView.classList.toggle("hidden", !usersMode);
   acceptanceView.classList.toggle("hidden", !acceptanceMode);
   if (orderMode) {
     pageTitle.textContent = "订单管理";
@@ -1904,6 +1906,9 @@ function renderActiveView() {
   } else if (acceptanceMode) {
     pageTitle.textContent = "阶段验收";
     pageSubtitle.textContent = "把第一期是否可内部试运营、可汇报、可重复演示直接摊开看。";
+  } else if (usersMode) {
+    pageTitle.textContent = "用户管理";
+    pageSubtitle.textContent = "查看登录用户，分配普通用户、管理员和服务商角色。";
   } else {
     pageTitle.textContent = "服务商管理";
     pageSubtitle.textContent = "查看服务商资料、当天任务顺序和一键推进节点。";
@@ -1918,6 +1923,8 @@ function renderActiveView() {
     renderArchiveView();
   } else if (acceptanceMode) {
     renderAcceptanceView();
+  } else if (usersMode) {
+    renderUsersView();
   } else if (!orderMode) {
     renderWorkersView();
   }
@@ -1993,9 +2000,88 @@ function closeWorkerModal() {
   delete workerProfileForm.dataset.workerId;
 }
 
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function roleLabel(role) {
+  return {
+    admin: "管理员",
+    customer: "普通用户",
+    server: "服务商",
+    provider: "服务商",
+  }[role] || "普通用户";
+}
+
+function renderUsersView() {
+  if (!usersView) return;
+  const listEl = document.getElementById("userAdminList");
+  if (!listEl) return;
+  const countEl = document.getElementById("usersResultCount");
+  if (countEl) countEl.textContent = `${users.length} 人`;
+  if (!users.length) {
+    listEl.innerHTML = `
+      <div class="empty-state">
+        <strong>暂无用户</strong>
+        <span>用户首次登录后会自动同步到这里。</span>
+      </div>
+    `;
+    return;
+  }
+  listEl.innerHTML = users
+    .map((user) => {
+      const email = escapeHtml(user.email);
+      const role = user.role === "provider" ? "server" : user.role || "customer";
+      const status = user.status || "active";
+      return `
+        <article class="user-admin-card">
+          <div class="user-admin-main">
+            <strong>${email}</strong>
+            <span>${escapeHtml(user.displayName || "未填写姓名")}</span>
+            <small>${roleLabel(role)} · ${status === "active" ? "启用" : "停用"}</small>
+          </div>
+          <div class="user-admin-controls">
+            <select class="select" data-user-role="${email}">
+              <option value="customer" ${role === "customer" ? "selected" : ""}>普通用户</option>
+              <option value="admin" ${role === "admin" ? "selected" : ""}>管理员</option>
+              <option value="server" ${role === "server" ? "selected" : ""}>服务商</option>
+            </select>
+            <select class="select" data-user-status="${email}">
+              <option value="active" ${status === "active" ? "selected" : ""}>启用</option>
+              <option value="disabled" ${status === "disabled" ? "selected" : ""}>停用</option>
+            </select>
+            <button class="btn" type="button" data-save-user="${email}">保存</button>
+          </div>
+        </article>
+      `;
+    })
+    .join("");
+  listEl.querySelectorAll("[data-save-user]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const email = button.dataset.saveUser;
+      const role = listEl.querySelector(`[data-user-role="${CSS.escape(email)}"]`)?.value || "customer";
+      const status = listEl.querySelector(`[data-user-status="${CSS.escape(email)}"]`)?.value || "active";
+      button.disabled = true;
+      try {
+        await updateUserRole(email, role, status);
+      } catch (error) {
+        alert(error.message);
+      } finally {
+        button.disabled = false;
+      }
+    });
+  });
+}
+
 function hydrate(payload) {
   orders = payload.orders || [];
   workers = payload.workers || [];
+  users = payload.users || users;
   storeMeta = payload.store || storeMeta;
   if (!orders.find((order) => order.id === selectedId)) {
     selectedId = orders[0]?.id || "";
@@ -2004,9 +2090,13 @@ function hydrate(payload) {
 }
 
 async function request(url, options = {}) {
+  const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
+  if (currentAdminEmail) {
+    headers["X-GardenOS-Actor-Email"] = currentAdminEmail;
+  }
   const response = await fetch(url, {
-    headers: { "Content-Type": "application/json" },
     ...options,
+    headers,
   });
   if (!response.ok) {
     let message = "请求失败";
@@ -2023,6 +2113,19 @@ async function request(url, options = {}) {
 
 async function bootstrap() {
   const payload = await request("/api/bootstrap");
+  const usersPayload = await request("/api/users");
+  payload.users = usersPayload.users || [];
   hydrate(payload);
 }
 
+async function updateUserRole(email, role, status) {
+  const payload = await request("/api/users/role", {
+    method: "PUT",
+    body: JSON.stringify({ email, role, status }),
+  });
+  users = users.map((user) => (user.email === payload.user.email ? payload.user : user));
+  if (!users.find((user) => user.email === payload.user.email)) {
+    users.push(payload.user);
+  }
+  renderUsersView();
+}

@@ -748,8 +748,50 @@
 
       .dispatch-shell.hidden,
       .archive-shell.hidden,
+      .workers-grid.hidden,
+      .users-shell.hidden,
       .acceptance-shell.hidden {
         display: none;
+      }
+
+      .users-shell {
+        padding: 16px 24px 24px;
+        display: grid;
+        gap: 12px;
+      }
+
+      .user-admin-list {
+        display: grid;
+        gap: 10px;
+      }
+
+      .user-admin-card {
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        box-shadow: var(--shadow);
+        padding: 14px 16px;
+        display: grid;
+        grid-template-columns: minmax(220px, 1fr) minmax(360px, auto);
+        align-items: center;
+        gap: 14px;
+      }
+
+      .user-admin-main {
+        display: grid;
+        gap: 4px;
+      }
+
+      .user-admin-main span,
+      .user-admin-main small {
+        color: var(--muted);
+      }
+
+      .user-admin-controls {
+        display: grid;
+        grid-template-columns: 140px 120px auto;
+        gap: 8px;
+        align-items: center;
       }
 
       .archive-shell {
@@ -1401,6 +1443,8 @@
         .dispatch-grid,
         .schedule-grid,
         .archive-grid,
+        .user-admin-card,
+        .user-admin-controls,
         .acceptance-meta {
           grid-template-columns: 1fr;
         }

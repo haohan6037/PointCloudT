@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,500&family=Source+Sans+3:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="/mowing-platform/css/admin.css?v=20260615-acceptance-nav-fix" />
+    <link rel="stylesheet" href="/mowing-platform/css/admin.css?v=20260617-users-menu-fix" />
     <style>
       .auth-shell { max-width: 560px; margin: 64px auto; padding: 0 20px; }
       .auth-card {
@@ -41,6 +41,7 @@
           <button type="button" data-view="dispatch">派单看板</button>
           <button type="button" data-view="archive">完成归档</button>
           <button type="button" data-view="workers">服务商</button>
+          <button type="button" data-view="users">用户管理</button>
           <button type="button" data-view="acceptance">阶段验收</button>
           <button type="button">价格配置</button>
           <button type="button">运营记录</button>
@@ -53,6 +54,7 @@
       <main class="main">
         <div class="session-tools">
           <button class="btn" type="button" id="openCustomerPortalBtn">客户端入口</button>
+          <button class="btn" type="button" id="openProviderPortalBtn">服务商端入口</button>
           <button class="btn ghost" type="button" id="adminLogoutBtn">退出登录</button>
         </div>
         <header class="topbar">
@@ -262,6 +264,14 @@
 
         <section class="workers-grid hidden" id="workersView" aria-label="服务商管理"></section>
 
+        <section class="users-shell hidden" id="usersView" aria-label="用户管理">
+          <div class="dispatch-head">
+            <h3>用户与权限</h3>
+            <span id="usersResultCount">0 人</span>
+          </div>
+          <div class="user-admin-list" id="userAdminList"></div>
+        </section>
+
         <section class="acceptance-shell hidden" id="acceptanceView" aria-label="阶段验收">
           <div class="acceptance-summary" id="acceptanceSummary"></div>
 
@@ -407,7 +417,7 @@
         </div>
       </div>
     </div>
-    <script src="/mowing-platform/js/clerk-auth.js?v=20260615-acceptance-nav-fix"></script>
+    <script src="/mowing-platform/js/clerk-auth.js?v=20260617-users-menu-fix"></script>
     <script>
       window.addEventListener("load", async () => {
         const authShell = document.getElementById("adminAuthShell");
@@ -422,7 +432,8 @@
               authShell.classList.remove("hidden-auth");
               appShell.classList.add("hidden-auth");
             },
-            onAuthorized() {
+            onAuthorized({ sessionUser }) {
+              currentAdminEmail = sessionUser.email || "";
               authShell.classList.add("hidden-auth");
               appShell.classList.remove("hidden-auth");
               // 登录成功后从服务器拉取最新数据
@@ -442,11 +453,11 @@
         });
       });
     </script>
-    <script src="/mowing-platform/js/constants.js?v=20260615-acceptance-nav-fix"></script>
-    <script src="/mowing-platform/js/utils.js?v=20260615-acceptance-nav-fix"></script>
-    <script src="/mowing-platform/js/autocomplete.js?v=20260615-acceptance-nav-fix"></script>
-    <script src="/mowing-platform/js/render.js?v=20260615-acceptance-nav-fix"></script>
-    <script src="/mowing-platform/js/api.js?v=20260615-acceptance-nav-fix"></script>
-    <script src="/mowing-platform/js/app.js?v=20260615-acceptance-nav-fix"></script>
+    <script src="/mowing-platform/js/constants.js?v=20260617-users-menu-fix"></script>
+    <script src="/mowing-platform/js/utils.js?v=20260617-users-menu-fix"></script>
+    <script src="/mowing-platform/js/autocomplete.js?v=20260617-users-menu-fix"></script>
+    <script src="/mowing-platform/js/render.js?v=20260617-users-menu-fix"></script>
+    <script src="/mowing-platform/js/api.js?v=20260617-users-menu-fix"></script>
+    <script src="/mowing-platform/js/app.js?v=20260617-users-menu-fix"></script>
   </body>
 </html>

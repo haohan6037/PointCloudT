@@ -1,9 +1,11 @@
 // Utility functions and shared state / 工具函数和共享状态
 let orders = [];
 let workers = [];
+let users = [];
 let selectedId = "";
 let storeMeta = { mode: "fallback", databaseEnabled: false, error: null };
 let activeView = "orders";
+let currentAdminEmail = "";
 let selectedArchiveOrderIds = new Set();
 
 const orderList = document.getElementById("orderList");
@@ -18,6 +20,7 @@ const createOrderForm = document.getElementById("createOrderForm");
 const workerModal = document.getElementById("workerModal");
 const workerProfileForm = document.getElementById("workerProfileForm");
 const workersView = document.getElementById("workersView");
+const usersView = document.getElementById("usersView");
 const ordersView = document.getElementById("ordersView");
 const dispatchView = document.getElementById("dispatchView");
 const archiveView = document.getElementById("archiveView");
@@ -211,4 +214,3 @@ function formatDistance(km) {
   if (km < 1) return `${(km * 1000).toFixed(0)}m`;
   return `${km}km`;
 }
-

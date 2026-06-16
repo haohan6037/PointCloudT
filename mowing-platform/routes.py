@@ -6,7 +6,7 @@ import os
 from typing import Any, Optional
 from urllib.parse import quote, urlencode
 
-from fastapi import FastAPI, HTTPException, UploadFile, File, Form
+from fastapi import FastAPI, HTTPException, Header, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
@@ -461,15 +461,30 @@ def get_current_user(email: str = "") -> dict[str, Any]:
     return {"user": user}
 
 
+def require_admin_actor(actor_email: str = "") -> dict[str, Any]:
+    """Require an active admin actor for management APIs / 管理接口要求启用管理员身份."""
+    if not actor_email:
+        raise HTTPException(status_code=403, detail="Admin permission required")
+    user = service.store.get_user(actor_email.strip().lower())
+    if not user or user.get("role") != "admin" or user.get("status") != "active":
+        raise HTTPException(status_code=403, detail="Admin permission required")
+    return user
+
+
 @app.get("/api/users")
-def list_users() -> dict[str, Any]:
+def list_users(actor_email: str = Header(default="", alias="X-GardenOS-Actor-Email")) -> dict[str, Any]:
     """List app users / 列出平台用户."""
+    require_admin_actor(actor_email=actor_email)
     return {"users": service.store.list_users()}
 
 
 @app.put("/api/users/role")
-def update_user_role(payload: UserRoleUpdatePayload) -> dict[str, Any]:
+def update_user_role(
+    payload: UserRoleUpdatePayload,
+    actor_email: str = Header(default="", alias="X-GardenOS-Actor-Email"),
+) -> dict[str, Any]:
     """Update app user role / 更新平台用户角色."""
+    require_admin_actor(actor_email=actor_email)
     user = service.store.update_user_role(payload.email, payload.role, payload.status)
     return {"user": user}
 

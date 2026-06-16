@@ -60,9 +60,15 @@
     );
   }
 
+  function normalizeRole(role) {
+    if (role === "provider") return "server";
+    return role || "customer";
+  }
+
   function routeForRole(role) {
-    if (role === "admin") return "/";
-    if (role === "provider") return "/provider";
+    const normalizedRole = normalizeRole(role);
+    if (normalizedRole === "admin") return "/";
+    if (normalizedRole === "server") return "/provider";
     return "/customer";
   }
 
@@ -85,7 +91,7 @@
     if (!resp.ok) {
       throw new Error(data.detail || "同步登录状态失败");
     }
-    return data.user;
+    return { ...data.user, role: normalizeRole(data.user?.role) };
   }
 
   async function mountSignIn(targetId) {
@@ -159,9 +165,12 @@
 
       const sessionUser = await syncCurrentUser();
       const nextPath = routeForRole(sessionUser.role);
+      const isAdmin = sessionUser.role === "admin";
+      const normalizedAllowedRoles = allowedRoles ? allowedRoles.map(normalizeRole) : null;
+      const normalizedRequiredRole = normalizeRole(requiredRole);
       const roleAllowed = allowedRoles
-        ? allowedRoles.includes(sessionUser.role)
-        : !requiredRole || sessionUser.role === requiredRole;
+        ? isAdmin || normalizedAllowedRoles.includes(sessionUser.role)
+        : isAdmin || !requiredRole || sessionUser.role === normalizedRequiredRole;
       if (!roleAllowed) {
         if (window.location.pathname !== nextPath) {
           window.location.assign(nextPath);
@@ -212,6 +221,7 @@
   window.GardenOSAuth = {
     ensureLoaded,
     getPrimaryEmail,
+    normalizeRole,
     routeForRole,
     guardPage,
     signOut,
