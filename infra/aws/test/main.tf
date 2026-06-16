@@ -201,7 +201,9 @@ resource "aws_ecs_task_definition" "app" {
         { name = "PGUSER", value = var.db_user },
         { name = "PGSSLMODE", value = "verify-full" },
         { name = "PGSSLROOTCERT", value = "/app/certs/global-bundle.pem" },
-        { name = "Clerk_Public_Key", value = var.clerk_public_key }
+        { name = "Clerk_Public_Key", value = var.clerk_public_key },
+        { name = "ADMIN_EMAILS", value = var.admin_emails },
+        { name = "PROVIDER_EMAILS", value = var.provider_emails }
       ]
       secrets = [
         { name = "PGPASSWORD", valueFrom = var.db_password_secret_value_from },

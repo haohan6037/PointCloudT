@@ -11,6 +11,8 @@ geoapify_api_key_secret_value_from = "arn:aws:secretsmanager:ap-southeast-6:1339
 geoapify_api_key_secret_arn        = "arn:aws:secretsmanager:ap-southeast-6:133946907310:secret:Geoapify-xxxxxx"
 github_repo                   = "haohan6037/PointCloudT"
 clerk_public_key              = "pk_test_xxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+admin_emails                  = "haohan6037@gmail.com,kaiyu.yang@youngproperty.co.nz"
+provider_emails               = ""
 
 # Optional: set explicit subnet IDs if the VPC has private/public subnet separation.
 # subnet_ids = ["subnet-...", "subnet-..."]

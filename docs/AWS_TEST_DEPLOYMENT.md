@@ -52,6 +52,7 @@ This means the application runtime can stay in New Zealand, but identity and CI/
 | Geoapify secret name | `Geoapify` |
 | Geoapify secret ARN | `arn:aws:secretsmanager:ap-southeast-6:133946907310:secret:Geoapify-2HVDsz` |
 | Geoapify JSON key | `GEOAPIFY_API_KEY` |
+| Admin emails | `haohan6037@gmail.com,kaiyu.yang@youngproperty.co.nz` |
 
 ## Local AWS CLI Blocker
 
@@ -202,6 +203,7 @@ Frontend login note:
 ```text
 The admin and customer pages require Clerk_Public_Key in the ECS task environment.
 If this value is missing, the app HTML is served but the login shell can appear blank.
+Admin routing requires ADMIN_EMAILS in the ECS task environment.
 ```
 
 Fast stop command:

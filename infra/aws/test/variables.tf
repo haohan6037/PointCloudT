@@ -82,6 +82,18 @@ variable "clerk_public_key" {
   sensitive   = true
 }
 
+variable "admin_emails" {
+  description = "Comma-separated emails that should be treated as platform admins."
+  type        = string
+  default     = "haohan6037@gmail.com,kaiyu.yang@youngproperty.co.nz"
+}
+
+variable "provider_emails" {
+  description = "Comma-separated emails that should be treated as service providers."
+  type        = string
+  default     = ""
+}
+
 variable "github_repo" {
   description = "GitHub repository in owner/name format."
   type        = string
