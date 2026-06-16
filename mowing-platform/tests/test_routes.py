@@ -6,6 +6,42 @@ import json
 import urllib.parse
 
 
+class TestDatabaseDsn:
+    """Database DSN builder / 数据库连接串构建."""
+
+    def test_build_dsn_uses_database_url_first(self, monkeypatch):
+        from routes import _build_dsn
+
+        monkeypatch.setenv("DATABASE_URL", "postgresql://example/db")
+        monkeypatch.setenv("PGUSER", "ignored")
+
+        assert _build_dsn() == "postgresql://example/db"
+
+    def test_build_dsn_adds_rds_ssl_options(self, monkeypatch):
+        from routes import _build_dsn
+
+        monkeypatch.delenv("DATABASE_URL", raising=False)
+        monkeypatch.setenv("PGHOST", "mygardenostestdb.cno2oku4ynd8.ap-southeast-6.rds.amazonaws.com")
+        monkeypatch.setenv("PGPORT", "5432")
+        monkeypatch.setenv("PGDATABASE", "postgres")
+        monkeypatch.setenv("PGUSER", "postgres")
+        monkeypatch.setenv("PGPASSWORD", "secret with spaces")
+        monkeypatch.setenv("PGSSLMODE", "verify-full")
+        monkeypatch.setenv("PGSSLROOTCERT", "/app/certs/global-bundle.pem")
+
+        dsn = _build_dsn()
+
+        assert dsn is not None
+        parsed = urllib.parse.urlparse(dsn)
+        query = urllib.parse.parse_qs(parsed.query)
+        assert parsed.hostname == "mygardenostestdb.cno2oku4ynd8.ap-southeast-6.rds.amazonaws.com"
+        assert parsed.port == 5432
+        assert parsed.username == "postgres"
+        assert urllib.parse.unquote(parsed.password or "") == "secret with spaces"
+        assert query["sslmode"] == ["verify-full"]
+        assert query["sslrootcert"] == ["/app/certs/global-bundle.pem"]
+
+
 class TestHealth:
     """Health check and bootstrap / 健康检查和数据加载."""
 

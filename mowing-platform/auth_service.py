@@ -72,7 +72,7 @@ def send_verification_code(email: str) -> bool:
         print(f"\n{'='*50}")
         print(f"📧 验证码发送至 {email}")
         print(f"🔑 验证码: {code}")
-        print(f"⏰ 有效期: 10 分钟")
+        print("⏰ 有效期: 10 分钟")
         print(f"{'='*50}\n")
 
     return True

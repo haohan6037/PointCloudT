@@ -4,19 +4,15 @@ from __future__ import annotations
 import copy
 import json
 import os
-from datetime import datetime
 from decimal import Decimal
-from pathlib import Path
 from typing import Any
 
 from fastapi import HTTPException
 
 from data import ROOT, WORKERS, SEED_ORDERS, timestamp, activity_entry
 from models import (
-    QuotePayload, AssignPayload, OrderCreatePayload, WorkerAvailabilityPayload,
-    WorkerProfilePayload, OrderStatusPayload, CompletionPayload, OrderOpsPayload,
-    ServiceLogPayload, QualityReviewPayload, ExceptionPayload, CancelPayload,
-    OrderUpdatePayload, InternalNotePayload, StoreStatus,
+    OrderCreatePayload, WorkerProfilePayload, CompletionPayload, OrderOpsPayload,
+    ServiceLogPayload, QualityReviewPayload, ExceptionPayload, OrderUpdatePayload,
 )
 
 try:
@@ -541,7 +537,7 @@ class PostgresStore:
         self.schema_sql = (ROOT / "schema.sql").read_text(encoding="utf-8")
 
     def _connect(self):
-        return psycopg.connect(self.dsn, connect_timeout=3, sslmode="disable")
+        return psycopg.connect(self.dsn, connect_timeout=3)
 
     @staticmethod
     def _decode_json_value(value: Any) -> list[Any]:

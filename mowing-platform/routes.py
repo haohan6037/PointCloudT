@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import os
 from typing import Any, Optional
+from urllib.parse import quote, urlencode
 
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 from address_service import AddressService, haversine_m
@@ -87,8 +88,18 @@ def _build_dsn() -> str | None:
     password = os.getenv("PGPASSWORD")
     if not user:
         return None
-    auth = user if not password else f"{user}:{password}"
-    return f"postgresql://{auth}@{host}:{port}/{database}"
+    auth = quote(user, safe="")
+    if password:
+        auth = f"{auth}:{quote(password, safe='')}"
+    query: dict[str, str] = {}
+    sslmode = os.getenv("PGSSLMODE")
+    sslrootcert = os.getenv("PGSSLROOTCERT")
+    if sslmode:
+        query["sslmode"] = sslmode
+    if sslrootcert:
+        query["sslrootcert"] = sslrootcert
+    query_string = f"?{urlencode(query)}" if query else ""
+    return f"postgresql://{auth}@{host}:{port}/{quote(database, safe='')}{query_string}"
 
 
 # ── App factory / 应用工厂 ─────────────────────────────────────────────
