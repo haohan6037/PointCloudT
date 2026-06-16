@@ -2,5 +2,7 @@
 .codex-backups/
 .venv/
 .codex-artifacts/
+mowing-platform/.env
 *.laz
 *.las
+mowing-platform/.env

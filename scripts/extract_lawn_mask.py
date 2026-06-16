@@ -520,10 +520,44 @@ def extract_components(mask):
     return components
 
 
-def summarize_component(pixels, pixel_area_m2):
+def summarize_component(pixels, pixel_area_m2, green_channel=None, exg_map=None):
     xs = [p[0] for p in pixels]
     ys = [p[1] for p in pixels]
     area_px = len(pixels)
+    bbox_x0 = int(min(xs))
+    bbox_y0 = int(min(ys))
+    bbox_x1 = int(max(xs) + 1)
+    bbox_y1 = int(max(ys) + 1)
+    bbox_width = max(1, bbox_x1 - bbox_x0)
+    bbox_height = max(1, bbox_y1 - bbox_y0)
+    bbox_area_px = bbox_width * bbox_height
+    fill_ratio = float(area_px / max(bbox_area_px, 1))
+
+    pixels_set = set(pixels)
+    perimeter_px = 0
+    for x, y in pixels_set:
+        if (x - 1, y) not in pixels_set:
+            perimeter_px += 1
+        if (x + 1, y) not in pixels_set:
+            perimeter_px += 1
+        if (x, y - 1) not in pixels_set:
+            perimeter_px += 1
+        if (x, y + 1) not in pixels_set:
+            perimeter_px += 1
+
+    compactness = 0.0
+    if perimeter_px > 0:
+        compactness = float((4.0 * np.pi * area_px) / (perimeter_px * perimeter_px))
+
+    mean_green = None
+    mean_exg = None
+    if green_channel is not None:
+        green_vals = green_channel[ys, xs]
+        mean_green = float(np.mean(green_vals))
+    if exg_map is not None:
+        exg_vals = exg_map[ys, xs]
+        mean_exg = float(np.mean(exg_vals))
+
     return {
         "area_px": area_px,
         "area_m2": area_px * pixel_area_m2,
@@ -532,11 +566,19 @@ def summarize_component(pixels, pixel_area_m2):
             "y": float(sum(ys) / max(area_px, 1)),
         },
         "bbox": {
-            "x0": int(min(xs)),
-            "y0": int(min(ys)),
-            "x1": int(max(xs) + 1),
-            "y1": int(max(ys) + 1),
+            "x0": bbox_x0,
+            "y0": bbox_y0,
+            "x1": bbox_x1,
+            "y1": bbox_y1,
         },
+        "bbox_width_px": bbox_width,
+        "bbox_height_px": bbox_height,
+        "bbox_area_px": bbox_area_px,
+        "fill_ratio": fill_ratio,
+        "perimeter_px": perimeter_px,
+        "compactness": compactness,
+        "mean_green": mean_green,
+        "mean_exg": mean_exg,
         "pixels": pixels,
     }
 
@@ -604,16 +646,206 @@ def extract_polygon_from_mask(mask, epsilon):
 def choose_primary_component(components):
     if not components:
         return None
-    ranked = sorted(
-        enumerate(components),
+    max_area = max(component["area_m2"] for component in components)
+    max_shape_score = max(
+        component["fill_ratio"] * component["compactness"] for component in components
+    )
+
+    ranked = []
+    for idx, component in enumerate(components):
+        area_norm = component["area_m2"] / max(max_area, 1e-9)
+        shape_score = component["fill_ratio"] * component["compactness"]
+        shape_norm = shape_score / max(max_shape_score, 1e-9)
+        exg_norm = 0.0
+        if component["mean_exg"] is not None:
+            exg_norm = float(np.clip(component["mean_exg"] / 0.6, 0.0, 1.0))
+
+        selection_score = (
+            0.22 * area_norm
+            + 0.23 * component["fill_ratio"]
+            + 0.50 * shape_norm
+            + 0.05 * exg_norm
+        )
+        component["selection_score"] = float(selection_score)
+        ranked.append((idx, component))
+
+    ranked.sort(
         key=lambda item: (
+            item[1]["selection_score"],
+            item[1]["compactness"],
+            item[1]["fill_ratio"],
             item[1]["area_m2"],
-            item[1]["bbox"]["x1"] - item[1]["bbox"]["x0"],
-            item[1]["bbox"]["y1"] - item[1]["bbox"]["y0"],
         ),
         reverse=True,
     )
     return ranked[0][0]
+
+
+def candidate_profiles(args):
+    return [
+        {
+            "key": "conservative",
+            "label": "保守版",
+            "description": "优先主草坪核心，尽量少吃边界",
+            "green_shift": 0.01,
+            "s_shift": 0.04,
+            "v_shift": 0.04,
+            "exg_shift": 0.03,
+            "majority_rounds": 2,
+            "width_scale": 1.22,
+            "cleanup_close_radius": 1,
+            "inset_m": args.inset_m + 0.18,
+        },
+        {
+            "key": "balanced",
+            "label": "平衡版",
+            "description": "面积与纯度折中，作为默认推荐",
+            "green_shift": 0.0,
+            "s_shift": 0.0,
+            "v_shift": 0.0,
+            "exg_shift": 0.0,
+            "majority_rounds": 2,
+            "width_scale": 1.0,
+            "cleanup_close_radius": 2,
+            "inset_m": args.inset_m,
+        },
+        {
+            "key": "aggressive",
+            "label": "激进版",
+            "description": "尽量覆盖完整草坪，允许更宽松外扩",
+            "green_shift": -0.02,
+            "s_shift": -0.04,
+            "v_shift": -0.05,
+            "exg_shift": -0.02,
+            "majority_rounds": 1,
+            "width_scale": 0.72,
+            "cleanup_close_radius": 3,
+            "inset_m": max(0.18, args.inset_m - 0.18),
+        },
+    ]
+
+
+def build_seed_mask(valid_surface, h, s, v, exg, dark_background, profile):
+    if dark_background:
+        h_min = 0.10 + profile["green_shift"]
+        h_max = 0.22 - profile["green_shift"] * 0.3
+        s_min = 0.18 + profile["s_shift"]
+        v_min = 0.28 + profile["v_shift"]
+        exg_limit = 0.02 + profile["exg_shift"]
+    else:
+        h_min = 0.11 + profile["green_shift"]
+        h_max = 0.23 - profile["green_shift"] * 0.3
+        s_min = 0.16 + profile["s_shift"]
+        v_min = 0.30 + profile["v_shift"]
+        exg_limit = 0.04 + profile["exg_shift"]
+
+    h_min = float(np.clip(h_min, 0.02, 0.35))
+    h_max = float(np.clip(h_max, h_min + 0.03, 0.35))
+    s_min = float(np.clip(s_min, 0.06, 0.55))
+    v_min = float(np.clip(v_min, 0.14, 0.75))
+    exg_limit = float(np.clip(exg_limit, -0.02, 0.20))
+
+    greenish = (h > h_min) & (h < h_max) & (s > s_min) & (v > v_min)
+    exg_hit = exg > exg_limit
+    return valid_surface & (greenish | exg_hit)
+
+
+def compute_candidate_from_profile(
+    profile,
+    args,
+    pixel_area_m2,
+    meters_per_px,
+    valid_surface,
+    h,
+    s,
+    v,
+    g,
+    exg,
+    dark_background,
+    parcel_clip_mask,
+):
+    seed = build_seed_mask(valid_surface, h, s, v, exg, dark_background, profile)
+    smooth = majority_filter(seed, rounds=profile["majority_rounds"])
+    width_radius_px = max(
+        1,
+        int(round(((args.min_width_m * profile["width_scale"]) / max(meters_per_px, 1e-9)) / 2.0)),
+    )
+    width_filtered = binary_open(smooth, width_radius_px)
+    width_filtered = binary_close(width_filtered, max(1, width_radius_px // 2))
+    width_filtered = width_filtered & parcel_clip_mask
+
+    components = extract_components(width_filtered)
+    keep_mask = np.zeros_like(width_filtered, dtype=bool)
+    for pixels in components:
+        area_m2 = len(pixels) * pixel_area_m2
+        if area_m2 >= args.min_area_m2:
+            for x, y in pixels:
+                keep_mask[y, x] = True
+
+    keep_mask = majority_filter(keep_mask, rounds=1)
+    keep_mask = binary_close(keep_mask, profile["cleanup_close_radius"])
+
+    refined_components = []
+    for pixels in extract_components(keep_mask):
+        area_m2 = len(pixels) * pixel_area_m2
+        if area_m2 >= args.min_area_m2:
+            summary = summarize_component(pixels, pixel_area_m2, g, exg)
+            refined_components.append(summary)
+
+    primary_component_index = choose_primary_component(refined_components)
+    final_mask = np.zeros_like(keep_mask, dtype=bool)
+    selected_component = None
+    if primary_component_index is not None and 0 <= primary_component_index < len(refined_components):
+        selected_component = refined_components[primary_component_index]
+        for x, y in selected_component["pixels"]:
+            final_mask[y, x] = True
+    final_mask = final_mask & parcel_clip_mask
+
+    inset_radius_px = max(0, int(round(profile["inset_m"] / max(meters_per_px, 1e-9))))
+    inset_mask = binary_erode(final_mask, inset_radius_px) if inset_radius_px > 0 else final_mask.copy()
+    if not np.any(inset_mask):
+        inset_mask = final_mask.copy()
+        inset_radius_px = 0
+
+    return {
+        "profile": {
+            "key": profile["key"],
+            "label": profile["label"],
+            "description": profile["description"],
+        },
+        "component_count": len(refined_components),
+        "selected_component_index": primary_component_index,
+        "selected_component": selected_component,
+        "kept_components": refined_components,
+        "final_mask": final_mask,
+        "inset_mask": inset_mask,
+        "inset_radius_px": inset_radius_px,
+        "polygon": extract_polygon_from_mask(inset_mask, args.polygon_epsilon_px),
+    }
+
+
+def mask_iou(mask_a, mask_b):
+    union = np.logical_or(mask_a, mask_b)
+    if not np.any(union):
+        return 0.0
+    inter = np.logical_and(mask_a, mask_b)
+    return float(np.count_nonzero(inter) / max(np.count_nonzero(union), 1))
+
+
+def serialize_candidate(candidate):
+    selected = candidate["selected_component"]
+    return {
+        "key": candidate["profile"]["key"],
+        "label": candidate["profile"]["label"],
+        "description": candidate["profile"]["description"],
+        "component_count": candidate["component_count"],
+        "selected_component_index": candidate["selected_component_index"],
+        "selected_area_m2": selected["area_m2"] if selected else None,
+        "selected_bbox": selected["bbox"] if selected else None,
+        "selection_score": selected.get("selection_score") if selected else None,
+        "polygon": candidate["polygon"],
+        "inset_radius_px": candidate["inset_radius_px"],
+    }
 
 
 def main():
@@ -631,70 +863,69 @@ def main():
     dark_background = float(np.median(border)) < 0.12
     valid_surface = (v > 0.05) if dark_background else (v < 0.985)
 
-    if dark_background:
-        greenish = (h > 0.10) & (h < 0.22) & (s > 0.18) & (v > 0.28)
-        exg_hit = exg > 0.02
-    else:
-        greenish = (h > 0.11) & (h < 0.23) & (s > 0.16) & (v > 0.30)
-        exg_hit = exg > 0.04
-
-    seed = valid_surface & (greenish | exg_hit)
-
-    smooth = majority_filter(seed, rounds=2)
-    width_radius_px = max(1, int(round((args.min_width_m / max(meters_per_px, 1e-9)) / 2.0)))
-    width_filtered = binary_open(smooth, width_radius_px)
-    width_filtered = binary_close(width_filtered, max(1, width_radius_px // 2))
-
-    parcel_clip_mask = np.ones_like(width_filtered, dtype=bool)
+    parcel_clip_mask = np.ones_like(valid_surface, dtype=bool)
     parcel_clip_info = {"enabled": False, "reason": "not_requested"}
     if args.council_meta is not None and args.registration_transform is not None:
         parcel_clip_mask, parcel_clip_info = build_parcel_clip_mask(
-            width_filtered.shape[1],
-            width_filtered.shape[0],
+            valid_surface.shape[1],
+            valid_surface.shape[0],
             meta,
             args.council_meta,
             args.registration_transform,
         )
-        width_filtered = width_filtered & parcel_clip_mask
 
-    components = extract_components(width_filtered)
-    kept_components = []
-    keep_mask = np.zeros_like(width_filtered, dtype=bool)
-    for pixels in components:
-        summary = summarize_component(pixels, pixel_area_m2)
-        if summary["area_m2"] >= args.min_area_m2:
-            kept_components.append(summary)
-            for x, y in pixels:
-                keep_mask[y, x] = True
+    generated_candidates = []
+    for profile in candidate_profiles(args):
+        candidate = compute_candidate_from_profile(
+            profile,
+            args,
+            pixel_area_m2,
+            meters_per_px,
+            valid_surface,
+            h,
+            s,
+            v,
+            g,
+            exg,
+            dark_background,
+            parcel_clip_mask,
+        )
+        if candidate["selected_component"] is None or len(candidate["polygon"]) < 3:
+            continue
+        duplicate = any(mask_iou(candidate["final_mask"], existing["final_mask"]) >= 0.985 for existing in generated_candidates)
+        if not duplicate:
+            generated_candidates.append(candidate)
 
-    keep_mask = majority_filter(keep_mask, rounds=1)
-    keep_mask = binary_close(keep_mask, 2)
-    refined_components = []
-    for pixels in extract_components(keep_mask):
-        summary = summarize_component(pixels, pixel_area_m2)
-        if summary["area_m2"] >= args.min_area_m2:
-            refined_components.append(summary)
+    if not generated_candidates:
+        fallback_profile = candidate_profiles(args)[1]
+        generated_candidates = [
+            compute_candidate_from_profile(
+                fallback_profile,
+                args,
+                pixel_area_m2,
+                meters_per_px,
+                valid_surface,
+                h,
+                s,
+                v,
+                g,
+                exg,
+                dark_background,
+                parcel_clip_mask,
+            )
+        ]
 
-    final_mask = np.zeros_like(keep_mask, dtype=bool)
-    primary_component_index = choose_primary_component(refined_components)
-    primary_components = (
-        [refined_components[primary_component_index]]
-        if primary_component_index is not None
-        else []
+    default_candidate_index = next(
+        (idx for idx, candidate in enumerate(generated_candidates) if candidate["profile"]["key"] == "balanced"),
+        0,
     )
-
-    for summary in primary_components:
-        for x, y in summary["pixels"]:
-            final_mask[y, x] = True
-    final_mask = final_mask & parcel_clip_mask
-
-    inset_radius_px = max(0, int(round(args.inset_m / max(meters_per_px, 1e-9))))
-    inset_mask = binary_erode(final_mask, inset_radius_px) if inset_radius_px > 0 else final_mask.copy()
-    if not np.any(inset_mask):
-        inset_mask = final_mask.copy()
-        inset_radius_px = 0
-
-    polygon = extract_polygon_from_mask(inset_mask, args.polygon_epsilon_px)
+    default_candidate = generated_candidates[default_candidate_index]
+    final_mask = default_candidate["final_mask"]
+    inset_mask = default_candidate["inset_mask"]
+    polygon = default_candidate["polygon"]
+    refined_components = default_candidate["kept_components"]
+    primary_component_index = default_candidate["selected_component_index"]
+    inset_radius_px = default_candidate["inset_radius_px"]
 
     args.output_mask.parent.mkdir(parents=True, exist_ok=True)
     args.output_overlay.parent.mkdir(parents=True, exist_ok=True)
@@ -756,6 +987,8 @@ def main():
         "background_mode": "dark" if dark_background else "light",
         "kept_components": refined_components,
         "selected_component_index": int(primary_component_index) if primary_component_index is not None else -1,
+        "default_candidate_index": int(default_candidate_index),
+        "candidates": [serialize_candidate(candidate) for candidate in generated_candidates],
         "polygon": polygon,
     }
 
@@ -770,13 +1003,14 @@ def main():
 
     max_component = max((c["area_m2"] for c in refined_components), default=0.0)
     print(
-        "kept_components={} selected_component_index={} background={} pixel_area_m2={:.5f} max_component_m2={:.1f} polygon_vertices={}".format(
+        "kept_components={} selected_component_index={} background={} pixel_area_m2={:.5f} max_component_m2={:.1f} polygon_vertices={} candidates={}".format(
             len(refined_components),
             primary_component_index if primary_component_index is not None else -1,
             "dark" if dark_background else "light",
             pixel_area_m2,
             max_component,
             len(polygon),
+            len(generated_candidates),
         )
     )
 

@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GardenOS 服务商端</title>
+  <link rel="stylesheet" href="/mowing-platform/css/portal-theme.css" />
+  <style>
+    #providerLogoutBtn { margin-left: auto; }
+  </style>
+</head>
+<body class="provider-portal">
+  <div class="page">
+    <div class="hero">
+      <div>
+        <div class="pill">服务商入口</div>
+        <h1>GardenOS 服务商端</h1>
+        <p>这里将承接服务商接单、到场确认、服务日志和异常反馈。当前先把身份分流和角色入口搭起来，后续再补完整工作台。</p>
+      </div>
+      <button class="btn btn-secondary hidden" id="providerLogoutBtn">退出</button>
+    </div>
+
+    <div class="card" id="providerAuthCard">
+      <h2>登录后进入服务商端</h2>
+      <p>只有被标记为服务商的账号可以停留在这里。普通用户和管理员登录后会自动跳转到对应入口。</p>
+      <div id="providerClerkAuth"></div>
+      <div id="providerLoginStatus" style="text-align:center;margin-top:10px;font-size:13px;"></div>
+    </div>
+
+    <div class="hidden" id="providerApp">
+      <div class="auth-grid">
+        <div class="card">
+          <h2>当前账号</h2>
+          <p id="providerIdentity">正在读取服务商信息...</p>
+        </div>
+        <div class="card">
+          <h2>当前阶段</h2>
+          <p>已完成角色分流和独立入口。下一步建议补接单列表、今日任务、服务回传和异常处理。</p>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>后续工作台骨架</h2>
+        <div class="summary-grid">
+          <div class="summary-card"><span>待接订单</span><strong>待开发</strong></div>
+          <div class="summary-card"><span>今日任务</span><strong>待开发</strong></div>
+          <div class="summary-card"><span>服务记录</span><strong>待开发</strong></div>
+        </div>
+        <div class="actions">
+          <button class="btn btn-primary" type="button" disabled>接单列表</button>
+          <button class="btn btn-secondary" type="button" disabled>服务日志</button>
+          <button class="btn btn-secondary" type="button" disabled>异常反馈</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/mowing-platform/js/clerk-auth.js?v=20260615-auth-fix"></script>
+  <script>
+    const providerAuthCard = document.getElementById("providerAuthCard");
+    const providerApp = document.getElementById("providerApp");
+    const providerIdentity = document.getElementById("providerIdentity");
+    const providerLogoutBtn = document.getElementById("providerLogoutBtn");
+
+    window.addEventListener("load", async () => {
+      try {
+        await window.GardenOSAuth.guardPage({
+          requiredRole: "provider",
+          mountTargetId: "providerClerkAuth",
+          loginStatusId: "providerLoginStatus",
+          onUnauthorized() {
+            providerAuthCard.classList.remove("hidden");
+            providerApp.classList.add("hidden");
+            providerLogoutBtn.classList.add("hidden");
+          },
+          onAuthorized({ sessionUser }) {
+            providerAuthCard.classList.add("hidden");
+            providerApp.classList.remove("hidden");
+            providerLogoutBtn.classList.remove("hidden");
+            providerIdentity.textContent = `${sessionUser.displayName || sessionUser.email} · ${sessionUser.email}`;
+            // 登录成功后从服务器拉取最新数据
+            if (typeof bootstrap === "function") {
+              bootstrap().catch((error) => {
+                console.error("数据加载失败:", error);
+              });
+            }
+          },
+        });
+      } catch (error) {
+        document.getElementById("providerLoginStatus").innerHTML = `❌ 初始化失败：${error.message}`;
+      }
+    });
+
+    providerLogoutBtn.addEventListener("click", async () => {
+      await window.GardenOSAuth.signOut();
+    });
+  </script>
+</body>
+</html>

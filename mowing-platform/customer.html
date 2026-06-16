@@ -1,0 +1,629 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GardenOS 草坪服务</title>
+  <link rel="stylesheet" href="/mowing-platform/css/portal-theme.css" />
+  <style>
+    .hero h1 { font-size: 32px; }
+    #logoutBtn { width: auto; padding: 6px 12px; font-size: 13px; }
+
+    /* ── 地址行（输入框 + 定位按钮）── */
+    .addr-row { display: flex; gap: 6px; align-items: stretch; }
+    .addr-row .input { flex: 1; }
+    .loc-btn {
+      flex-shrink: 0;
+      width: 44px;
+      min-width: 44px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-sm);
+      background: var(--surface);
+      cursor: pointer;
+      font-size: 18px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.15s;
+      padding: 0;
+    }
+    .loc-btn:active { background: var(--primary-light); }
+    .loc-btn.loading { opacity: 0.5; pointer-events: none; }
+    .addr-status {
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 4px;
+      min-height: 18px;
+    }
+  </style>
+</head>
+<body class="customer-portal">
+<div class="page">
+  <div class="hero">
+    <h1>🌿 GardenOS</h1>
+    <p>专业草坪养护 · 树木修剪 · 园艺服务</p>
+  </div>
+
+  <!-- ====== 登录 ====== -->
+  <div class="card" id="loginCard">
+    <h2>登录 / 注册</h2>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:14px;">使用 Clerk 登录后即可提交预约并查看订单进度。</p>
+    <div id="clerkAuth"></div>
+    <div id="loginStatus" style="text-align:center;margin-top:10px;font-size:13px;"></div>
+  </div>
+
+  <!-- ====== 登录后内容 ====== -->
+  <div id="appContent" class="hidden">
+
+    <div class="tab-bar" id="tabBar">
+      <button class="active" data-tab="order">预约服务</button>
+      <button data-tab="track">我的订单</button>
+      <button data-tab="my">我的</button>
+    </div>
+
+    <!-- ====== 我的（个人资料） ====== -->
+    <div id="myTab" class="hidden">
+      <div class="card" id="profileCard">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+          <h2 style="margin:0;">👤 <span id="profileEmail"></span></h2>
+          <button class="btn" style="width:auto;padding:6px 12px;font-size:13px;" id="logoutBtn">退出</button>
+        </div>
+        <div class="notice hidden" id="profileGateNotice">首次登录请先补充姓名、电话和常用地址。保存完成后才能进入预约服务和我的订单。</div>
+        <div class="field">
+          <label for="profileName">姓名</label>
+          <input class="input" id="profileName" placeholder="联系人姓名" />
+        </div>
+        <div class="field">
+          <label for="profilePhone">电话</label>
+          <input class="input" id="profilePhone" type="tel" placeholder="021-123-4567" />
+        </div>
+        <div class="field">
+          <label for="profileWhatsapp">WhatsApp（选填）</label>
+          <input class="input" id="profileWhatsapp" type="tel" placeholder="+64 21..." />
+        </div>
+        <div class="field">
+          <label for="profileWechat">微信（选填）</label>
+          <input class="input" id="profileWechat" placeholder="微信号" />
+        </div>
+        <div class="field autocomplete-wrap">
+          <label for="profileAddress">常用地址</label>
+          <div class="addr-row">
+            <input class="input" id="profileAddress" placeholder="默认服务地址" autocomplete="off" required />
+            <button type="button" class="loc-btn" data-target="profileAddress" title="使用当前位置">📍</button>
+          </div>
+          <div class="autocomplete-drop" id="profileAddressDropdown"></div>
+          <div class="addr-status" id="profileAddrStatus"></div>
+        </div>
+        <button class="btn btn-primary" id="saveProfileBtn">保存资料</button>
+        <div id="profileStatus" style="text-align:center;margin-top:8px;font-size:13px;"></div>
+      </div>
+    </div>
+
+  <!-- ====== 下单表单 ====== -->
+  <form id="orderTab" autocomplete="off">
+    <!-- 服务类型 -->
+    <div class="card">
+      <h2>选择服务类型</h2>
+      <div class="service-grid">
+        <div class="service-option">
+          <input type="radio" name="serviceType" value="割草服务" id="svc-mow" checked />
+          <label for="svc-mow"><span class="icon">🌱</span>割草服务</label>
+        </div>
+        <div class="service-option">
+          <input type="radio" name="serviceType" value="树木修剪" id="svc-tree" />
+          <label for="svc-tree"><span class="icon">🌳</span>树木修剪</label>
+        </div>
+        <div class="service-option">
+          <input type="radio" name="serviceType" value="园艺修整" id="svc-garden" />
+          <label for="svc-garden"><span class="icon">🌸</span>园艺修整</label>
+        </div>
+        <div class="service-option">
+          <input type="radio" name="serviceType" value="综合服务" id="svc-all" />
+          <label for="svc-all"><span class="icon">🏡</span>综合服务</label>
+        </div>
+      </div>
+    </div>
+
+    <!-- 地址 -->
+    <div class="card">
+      <h2>服务地址</h2>
+      <div class="field autocomplete-wrap">
+        <label for="addressInput">请输入您的地址</label>
+        <div class="addr-row">
+          <input class="input" id="addressInput" placeholder="例如：16 Pounamu Place, Auckland" required autocomplete="off" />
+          <button type="button" class="loc-btn" data-target="addressInput" title="使用当前位置">📍</button>
+        </div>
+        <div class="autocomplete-drop" id="addressDropdown"></div>
+        <div class="addr-status" id="addressStatus"></div>
+      </div>
+    </div>
+
+    <!-- 草坪信息 -->
+    <div class="card">
+      <h2>草坪与现场情况</h2>
+      <div class="field">
+        <label for="lawnSize">草坪面积或范围</label>
+        <input class="input" id="lawnSize" placeholder="例如：约 180 平方米，前院+后院" required />
+      </div>
+      <div class="field">
+        <label for="condition">现场情况描述</label>
+        <textarea class="textarea" id="condition" placeholder="例如：草坪较平整，后院有几棵树，靠围栏处边缘复杂，需要特别注意树下区域。" required></textarea>
+      </div>
+      <div class="field">
+        <label for="note">其他备注（选填）</label>
+        <textarea class="textarea" id="note" placeholder="例如：院子有一只小狗，服务前请电话确认；侧门密码锁。"></textarea>
+      </div>
+    </div>
+
+    <!-- 照片上传 -->
+    <div class="card">
+      <h2>上传草坪照片</h2>
+      <p style="font-size:13px;color:var(--muted);margin-bottom:10px;">拍摄草坪全貌、需要特别注意的区域（树下、围栏边、花坛等），帮助服务商提前了解现场。</p>
+      <div class="file-zone" id="fileZone">
+        <div style="font-size:32px;margin-bottom:6px;">📷</div>
+        <div>点击或拖拽上传照片</div>
+        <div style="font-size:12px;margin-top:4px;">支持 JPG、PNG，单张不超过 10MB</div>
+        <input type="file" id="photoInput" accept="image/*" multiple />
+      </div>
+      <div class="preview-grid" id="previewGrid"></div>
+    </div>
+
+    <!-- 时间与联系方式 -->
+    <div class="card">
+      <h2>期望时间与联系方式</h2>
+      <div class="field">
+        <label for="requestedDate">期望服务日期</label>
+        <input class="input" id="requestedDate" type="date" required />
+      </div>
+      <div class="field">
+        <label for="requestedTime">期望时间段（选填）</label>
+        <input class="input" id="requestedTime" type="text" placeholder="例如：上午 9:00-12:00" />
+      </div>
+      <div class="field">
+        <label for="userName">您的姓名</label>
+        <input class="input" id="userName" placeholder="联系人姓名" required />
+      </div>
+      <div class="field">
+        <label for="userPhone">联系电话</label>
+        <input class="input" id="userPhone" type="tel" placeholder="例如：021-123-4567" required />
+      </div>
+    </div>
+
+    <button class="btn btn-primary" type="submit" id="submitBtn">提交预约</button>
+    <div id="submitStatus" style="text-align:center;margin-top:10px;font-size:14px;"></div>
+  </form>
+
+  <!-- ====== 订单跟踪 ====== -->
+  <div id="trackTab" class="hidden">
+    <div class="card">
+      <h2>查看我的订单</h2>
+      <p style="font-size:13px;color:var(--muted);margin-bottom:10px;">显示该手机号关联的所有订单</p>
+      <button class="btn btn-primary" id="trackBtn">查询订单</button>
+    </div>
+    <div id="trackResult"></div>
+  </div>
+
+  </div><!-- /appContent -->
+</div>
+
+<script src="/mowing-platform/js/clerk-auth.js?v=20260615-auth-fix"></script>
+<script>
+// ═══════════════════════════════════════════════════
+// Global state / 全局状态
+// ═══════════════════════════════════════════════════
+let customerEmail = "";
+let customerProfile = null;
+
+// ═══════════════════════════════════════════════════
+// Auth / 登录认证
+// ═══════════════════════════════════════════════════
+const loginCard = document.getElementById("loginCard");
+const appContent = document.getElementById("appContent");
+const loginStatus = document.getElementById("loginStatus");
+const clerkAuth = document.getElementById("clerkAuth");
+const profileGateNotice = document.getElementById("profileGateNotice");
+const tabBar = document.getElementById("tabBar");
+const tabs = document.querySelectorAll("[data-tab]");
+const myTab = document.getElementById("myTab");
+const orderTab = document.getElementById("orderTab");
+const trackTab = document.getElementById("trackTab");
+
+function isProfileComplete(profile) {
+  return Boolean(
+    profile &&
+    profile.name?.trim() &&
+    profile.phone?.trim() &&
+    profile.address?.trim()
+  );
+}
+
+function syncProfileToOrderForm() {
+  document.getElementById("userName").value = customerProfile?.name || "";
+  document.getElementById("userPhone").value = customerProfile?.phone || "";
+  document.getElementById("addressInput").value = customerProfile?.address || "";
+}
+
+function enforceProfileGate() {
+  const complete = isProfileComplete(customerProfile);
+  profileGateNotice.classList.toggle("hidden", complete);
+  tabBar.classList.remove("hidden");
+
+  const myBtn = tabBar.querySelector('[data-tab="my"]');
+  const orderBtn = tabBar.querySelector('[data-tab="order"]');
+  const trackBtn = tabBar.querySelector('[data-tab="track"]');
+
+  if (!complete) {
+    myBtn.disabled = false;
+    myBtn.classList.add("active");
+    orderBtn.disabled = true;
+    orderBtn.classList.remove("active");
+    trackBtn.disabled = true;
+    trackBtn.classList.remove("active");
+
+    myTab.classList.remove("hidden");
+    orderTab.classList.add("hidden");
+    trackTab.classList.add("hidden");
+
+    document.getElementById("profileStatus").innerHTML = "请先完善姓名、电话和常用地址。";
+  } else {
+    myBtn.disabled = false;
+    orderBtn.disabled = false;
+    trackBtn.disabled = false;
+    // 首次完成资料时默认跳转到预约服务
+    orderBtn.classList.add("active");
+    myBtn.classList.remove("active");
+    trackBtn.classList.remove("active");
+    myTab.classList.add("hidden");
+    orderTab.classList.remove("hidden");
+    trackTab.classList.add("hidden");
+  }
+}
+
+async function fetchCustomerProfile(email) {
+  const resp = await fetch(`/api/customer/profile?email=${encodeURIComponent(email)}`);
+  const data = await resp.json();
+  if (!resp.ok) throw new Error(data.detail || "读取资料失败");
+  return data.profile;
+}
+
+function loginSuccess() {
+  loginCard.classList.add("hidden");
+  appContent.classList.remove("hidden");
+  document.getElementById("profileEmail").textContent = customerEmail;
+  document.getElementById("profileStatus").innerHTML = "";
+  // Fill profile if exists / 已有资料则填入
+  if (customerProfile) {
+    document.getElementById("profileName").value = customerProfile.name || "";
+    document.getElementById("profilePhone").value = customerProfile.phone || "";
+    document.getElementById("profileWhatsapp").value = customerProfile.whatsapp || "";
+    document.getElementById("profileWechat").value = customerProfile.wechat || "";
+    document.getElementById("profileAddress").value = customerProfile.address || "";
+  }
+  syncProfileToOrderForm();
+  enforceProfileGate();
+}
+
+window.addEventListener("load", async () => {
+  try {
+    await window.GardenOSAuth.guardPage({
+      allowedRoles: ["customer", "admin"],
+      mountTargetId: "clerkAuth",
+      loginStatusId: "loginStatus",
+      onUnauthorized() {
+        customerEmail = "";
+        customerProfile = null;
+        appContent.classList.add("hidden");
+        loginCard.classList.remove("hidden");
+        document.getElementById("profileEmail").textContent = "";
+        profileGateNotice.classList.add("hidden");
+        tabBar.classList.remove("hidden");
+      },
+      async onAuthorized({ sessionUser }) {
+        customerEmail = sessionUser.email;
+        customerProfile = await fetchCustomerProfile(customerEmail);
+        loginSuccess();
+      },
+    });
+  } catch (error) {
+    loginStatus.innerHTML = `❌ 初始化失败：${error.message}`;
+  }
+});
+
+document.getElementById("logoutBtn").addEventListener("click", async () => {
+  await window.GardenOSAuth.signOut();
+});
+
+// ═══════════════════════════════════════════════════
+// Profile / 个人资料
+// ═══════════════════════════════════════════════════
+document.getElementById("saveProfileBtn").addEventListener("click", async () => {
+  const status = document.getElementById("profileStatus");
+  status.innerHTML = "⏳ 保存中...";
+  try {
+    const payload = {
+      name: document.getElementById("profileName").value.trim(),
+      phone: document.getElementById("profilePhone").value.trim(),
+      whatsapp: document.getElementById("profileWhatsapp").value.trim(),
+      wechat: document.getElementById("profileWechat").value.trim(),
+      address: document.getElementById("profileAddress").value.trim(),
+    };
+    if (!payload.name || !payload.phone || !payload.address) {
+      throw new Error("姓名、电话和常用地址为必填项");
+    }
+    const resp = await fetch(`/api/customer/profile?email=${encodeURIComponent(customerEmail)}`, {
+      method: "PUT", headers: {"Content-Type":"application/json"},
+      body: JSON.stringify(payload),
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.detail || "保存失败");
+    customerProfile = data.profile;
+    syncProfileToOrderForm();
+    enforceProfileGate();
+    status.innerHTML = "✅ 资料已保存";
+    setTimeout(() => status.innerHTML = "", 2000);
+  } catch(e) { status.innerHTML = "❌ " + e.message; }
+});
+
+// ═══════════════════════════════════════════════════
+// Tab switching / 标签页切换
+// ═══════════════════════════════════════════════════
+tabs.forEach(btn => {
+  btn.addEventListener("click", () => {
+    if (btn.disabled) return;
+    tabs.forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    myTab.classList.toggle("hidden", btn.dataset.tab !== "my");
+    orderTab.classList.toggle("hidden", btn.dataset.tab !== "order");
+    trackTab.classList.toggle("hidden", btn.dataset.tab !== "track");
+  });
+});
+
+// Set default date to tomorrow / 默认日期设明天
+const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 2);
+document.getElementById("requestedDate").value = tomorrow.toISOString().slice(0, 10);
+
+// ═══════════════════════════════════════════════════
+// Photo upload / 照片上传
+// ═══════════════════════════════════════════════════
+const fileZone = document.getElementById("fileZone");
+const photoInput = document.getElementById("photoInput");
+const previewGrid = document.getElementById("previewGrid");
+let selectedFiles = [];
+
+fileZone.addEventListener("click", () => photoInput.click());
+fileZone.addEventListener("dragover", e => { e.preventDefault(); fileZone.classList.add("dragover"); });
+fileZone.addEventListener("dragleave", () => fileZone.classList.remove("dragover"));
+fileZone.addEventListener("drop", e => { e.preventDefault(); fileZone.classList.remove("dragover"); handleFiles(e.dataTransfer.files); });
+photoInput.addEventListener("change", () => handleFiles(photoInput.files));
+
+function handleFiles(files) {
+  for (const f of files) {
+    if (!f.type.startsWith("image/")) continue;
+    if (f.size > 10 * 1024 * 1024) { alert(`${f.name} 超过10MB限制`); continue; }
+    selectedFiles.push(f);
+  }
+  renderPreviews();
+}
+
+function renderPreviews() {
+  previewGrid.innerHTML = selectedFiles.map((f, i) => {
+    const url = URL.createObjectURL(f);
+    return `<div class="preview-item"><img src="${url}" /><button class="remove" data-idx="${i}">✕</button></div>`;
+  }).join("");
+  previewGrid.querySelectorAll(".remove").forEach(btn => {
+    btn.addEventListener("click", () => { selectedFiles.splice(btn.dataset.idx, 1); renderPreviews(); });
+  });
+}
+
+// ═══════════════════════════════════════════════════
+// Current location → reverse geocode / 当前位置→反向地理编码
+// ═══════════════════════════════════════════════════
+async function fillFromCurrentLocation(targetInputId, statusElId) {
+  const input = document.getElementById(targetInputId);
+  const btn = document.querySelector(`.loc-btn[data-target="${targetInputId}"]`);
+  const status = statusElId ? document.getElementById(statusElId) : null;
+
+  if (!navigator.geolocation) {
+    if (status) status.innerHTML = "⚠️ 浏览器不支持定位功能";
+    return;
+  }
+
+  btn.classList.add("loading");
+  if (status) status.innerHTML = "📍 获取位置中...";
+
+  navigator.geolocation.getCurrentPosition(
+    async (pos) => {
+      const { latitude, longitude } = pos.coords;
+      try {
+        const resp = await fetch(`/api/address/reverse-geocode?lat=${latitude}&lng=${longitude}`);
+        if (!resp.ok) {
+          if (status) status.innerHTML = "⚠️ 附近未找到地址，请手动输入";
+          btn.classList.remove("loading");
+          return;
+        }
+        const data = await resp.json();
+        input.value = data.address;
+        if (status) status.innerHTML = "✅ 已定位到地址";
+        setTimeout(() => { if (status) status.innerHTML = ""; }, 3000);
+      } catch (e) {
+        if (status) status.innerHTML = "⚠️ 定位失败，请手动输入";
+      }
+      btn.classList.remove("loading");
+    },
+    (err) => {
+      btn.classList.remove("loading");
+      if (status) {
+        if (err.code === 1) status.innerHTML = "⚠️ 定位权限被拒绝";
+        else if (err.code === 2) status.innerHTML = "⚠️ 无法获取位置信息";
+        else status.innerHTML = "⚠️ 定位超时，请重试";
+      }
+      setTimeout(() => { if (status) status.innerHTML = ""; }, 3000);
+    },
+    { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 }
+  );
+}
+
+document.querySelectorAll(".loc-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    const targetId = btn.dataset.target;
+    const statusMap = { addressInput: "addressStatus", profileAddress: "profileAddrStatus" };
+    fillFromCurrentLocation(targetId, statusMap[targetId]);
+  });
+});
+
+// ═══════════════════════════════════════════════════
+// Address autocomplete / 地址自动补全（两个地址字段复用）
+// ═══════════════════════════════════════════════════
+function setupAddressAutocomplete(inputId, dropdownId) {
+  const input = document.getElementById(inputId);
+  const dropdown = document.getElementById(dropdownId);
+  let timer, idx = -1;
+
+  input.addEventListener("input", () => {
+    clearTimeout(timer);
+    timer = setTimeout(async () => {
+      const q = input.value.trim();
+      if (q.length < 3) { dropdown.classList.remove("open"); return; }
+      try {
+        const resp = await fetch("/api/address/autocomplete", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({q}) });
+        const results = await resp.json();
+        if (!results.length) { dropdown.innerHTML = '<div style="padding:10px;font-size:12px;color:var(--muted);">未找到匹配地址</div>'; dropdown.classList.add("open"); return; }
+        idx = -1;
+        dropdown.innerHTML = results.map((r,i) => `<button data-idx="${i}">${r.address}</button>`).join("");
+        dropdown.querySelectorAll("button").forEach(b => b.addEventListener("mousedown", e => { e.preventDefault(); input.value = results[b.dataset.idx].address; dropdown.classList.remove("open"); }));
+        dropdown.classList.add("open");
+      } catch(e) { dropdown.classList.remove("open"); }
+    }, 300);
+  });
+
+  input.addEventListener("keydown", e => {
+    const items = dropdown.querySelectorAll("button");
+    if (!items.length) return;
+    if (e.key === "ArrowDown") { e.preventDefault(); idx = Math.min(idx+1, items.length-1); items.forEach((b,i) => b.style.background = i===idx ? "#f0f7f1" : ""); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); idx = Math.max(idx-1, 0); items.forEach((b,i) => b.style.background = i===idx ? "#f0f7f1" : ""); }
+    else if (e.key === "Enter" && idx>=0) { e.preventDefault(); items[idx].click(); }
+    else if (e.key === "Escape") dropdown.classList.remove("open");
+  });
+  input.addEventListener("blur", () => setTimeout(() => dropdown.classList.remove("open"), 200));
+}
+
+setupAddressAutocomplete("addressInput", "addressDropdown");
+setupAddressAutocomplete("profileAddress", "profileAddressDropdown");
+
+// ═══════════════════════════════════════════════════
+// Submit order / 提交订单
+// ═══════════════════════════════════════════════════
+document.getElementById("orderTab").addEventListener("submit", async e => {
+  e.preventDefault();
+  if (!isProfileComplete(customerProfile)) {
+    document.getElementById("submitStatus").innerHTML = "❌ 请先完善姓名、电话和常用地址。";
+    return;
+  }
+  const btn = document.getElementById("submitBtn");
+  const status = document.getElementById("submitStatus");
+  btn.disabled = true; btn.textContent = "提交中..."; status.textContent = "";
+
+  const form = new FormData();
+  form.append("user", document.getElementById("userName").value.trim());
+  form.append("phone", document.getElementById("userPhone").value.trim());
+  form.append("address", document.getElementById("addressInput").value.trim());
+  form.append("serviceType", document.querySelector("[name=serviceType]:checked").value);
+  form.append("requestedDate", document.getElementById("requestedDate").value);
+  form.append("requestedTime", document.getElementById("requestedTime").value.trim());
+  form.append("lawnSize", document.getElementById("lawnSize").value.trim());
+  form.append("condition", document.getElementById("condition").value.trim());
+  form.append("note", document.getElementById("note").value.trim());
+  selectedFiles.forEach(f => form.append("photos", f));
+
+  try {
+    const resp = await fetch("/api/customer/orders", { method: "POST", body: form });
+    if (!resp.ok) throw new Error((await resp.json()).detail || "提交失败");
+    const data = await resp.json();
+    const orderId = data.order.id;
+    status.innerHTML = `✅ 预约成功！订单号：<strong>${orderId}</strong><br>平台将在 1-2 个工作日内确认价格，届时请在此页面查看报价。`;
+    document.getElementById("orderTab").reset();
+    selectedFiles = []; previewGrid.innerHTML = "";
+    document.getElementById("requestedDate").value = tomorrow.toISOString().slice(0,10);
+  } catch(err) {
+    status.innerHTML = `❌ ${err.message}`;
+  } finally {
+    btn.disabled = false; btn.textContent = "提交预约";
+  }
+});
+
+// ═══════════════════════════════════════════════════
+// Track orders / 查询订单
+// ═══════════════════════════════════════════════════
+document.getElementById("trackBtn").addEventListener("click", async () => {
+  if (!isProfileComplete(customerProfile)) {
+    alert("请先完善姓名、电话和常用地址");
+    return;
+  }
+  // Use profile phone + order phone / 用资料电话 + 下单电话查
+  const phones = [customerProfile?.phone, document.getElementById("userPhone").value].filter(Boolean);
+  if (!phones.length) { alert("请先在个人资料中填写联系电话"); return; }
+  const target = document.getElementById("trackResult");
+  target.innerHTML = '<div style="text-align:center;padding:20px;color:var(--muted);">查询中...</div>';
+
+  try {
+    // Query with all known phones / 用所有已知手机号查
+    const allOrders = [];
+    for (const phone of phones) {
+      const resp = await fetch(`/api/customer/orders?phone=${encodeURIComponent(phone)}`);
+      const data = await resp.json();
+      allOrders.push(...(data.orders || []));
+    }
+    // Deduplicate by order id / 按订单号去重
+    const seen = new Set();
+    const orders = allOrders.filter(o => seen.has(o.id) ? false : seen.add(o.id)).sort((a,b) => b.updatedAt.localeCompare(a.updatedAt));
+
+    if (!orders.length) { target.innerHTML = '<div class="card" style="text-align:center;color:var(--muted);">未找到该手机号的订单</div>'; return; }
+
+    const statusText = {
+      pending_review: "待平台确认", quoted: "已报价", accepted_by_customer: "客户已确认",
+      assigned: "已派单", accepted_by_worker: "服务商已接单", in_service: "服务中",
+      pending_quality_review: "待质量审核", completed: "已完成", cancelled: "已取消"
+    };
+    const statusClass = {
+      pending_review: "pending", quoted: "quoted", accepted_by_customer: "accepted"
+    };
+
+    target.innerHTML = orders.map(o => `
+      <div class="order-card">
+        <div class="status-bar ${statusClass[o.status] || "pending"}">📋 ${statusText[o.status] || o.status} · ${o.id}</div>
+        <h3>${o.serviceType} · ${o.address}</h3>
+        <div class="meta">
+          <div>📅 ${o.requestedTime} | 🌱 ${o.lawnSize}</div>
+          <div>📝 ${o.condition}</div>
+          ${o.price ? `<div style="font-size:16px;font-weight:700;color:var(--primary-dark);margin-top:6px;">💰 报价：$${o.price} ${o.priceNote ? `（${o.priceNote}）` : ""}</div>` : ""}
+          ${o.status === "quoted" ? `
+            <div class="actions">
+              <button class="btn btn-primary" data-confirm="${o.id}">接受报价</button>
+              <button class="btn btn-danger" data-reject="${o.id}">拒绝</button>
+            </div>
+          ` : ""}
+        </div>
+      </div>
+    `).join("");
+
+    // Wire confirm/reject
+    target.querySelectorAll("[data-confirm]").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        await fetch(`/api/customer/orders/${btn.dataset.confirm}/confirm`, { method: "POST" });
+        document.getElementById("trackBtn").click();
+      });
+    });
+    target.querySelectorAll("[data-reject]").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        if (!confirm("确认拒绝此报价？订单将回到待平台确认状态。")) return;
+        await fetch(`/api/customer/orders/${btn.dataset.reject}/reject`, { method: "POST" });
+        document.getElementById("trackBtn").click();
+      });
+    });
+  } catch(err) {
+    target.innerHTML = `<div class="card" style="text-align:center;color:#a23a3a;">查询失败：${err.message}</div>`;
+  }
+});
+</script>
+</body>
+</html>

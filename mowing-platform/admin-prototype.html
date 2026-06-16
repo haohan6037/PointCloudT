@@ -1,0 +1,452 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>割草服务平台后台原型</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,500&family=Source+Sans+3:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/mowing-platform/css/admin.css?v=20260615-acceptance-nav-fix" />
+    <style>
+      .auth-shell { max-width: 560px; margin: 64px auto; padding: 0 20px; }
+      .auth-card {
+        background: #fffdf8; border: 1px solid #d5d8c9; border-radius: 16px; padding: 28px;
+        box-shadow: 0 8px 28px rgba(26, 35, 23, 0.07);
+      }
+      .auth-card h2 { margin: 0 0 8px; font-family: "Playfair Display", serif; }
+      .auth-card p { margin: 0 0 16px; color: #6b7263; line-height: 1.7; }
+      .hidden-auth { display: none !important; }
+      .session-tools { display: flex; justify-content: flex-end; margin-bottom: 12px; }
+    </style>
+  </head>
+  <body>
+    <div class="auth-shell hidden-auth" id="adminAuthShell">
+      <div class="auth-card">
+        <h2>管理员登录</h2>
+        <p>只有管理员可以进入后台。普通用户和服务商登录后会自动跳转到各自入口。</p>
+        <div id="adminClerkAuth"></div>
+        <div id="adminLoginStatus" style="text-align:center;margin-top:10px;font-size:13px;"></div>
+      </div>
+    </div>
+
+    <div class="app hidden-auth" id="adminAppShell">
+      <aside class="sidebar">
+        <div class="brand">
+          <h1>割草服务平台</h1>
+          <p>后台原型 · 阶段 1</p>
+        </div>
+        <nav class="nav" aria-label="后台导航">
+          <button class="active" type="button" data-view="orders">订单管理</button>
+          <button type="button" data-view="dispatch">派单看板</button>
+          <button type="button" data-view="archive">完成归档</button>
+          <button type="button" data-view="workers">服务商</button>
+          <button type="button" data-view="acceptance">阶段验收</button>
+          <button type="button">价格配置</button>
+          <button type="button">运营记录</button>
+        </nav>
+        <div class="sidebar-note">
+          当前原型用于验证后台接单、报价、派单和订单状态流转。
+        </div>
+      </aside>
+
+      <main class="main">
+        <div class="session-tools">
+          <button class="btn" type="button" id="openCustomerPortalBtn">客户端入口</button>
+          <button class="btn ghost" type="button" id="adminLogoutBtn">退出登录</button>
+        </div>
+        <header class="topbar">
+          <div>
+            <h2 id="pageTitle">订单管理</h2>
+            <p id="pageSubtitle">阶段 1：平台先能接住业务，再逐步开放用户端和服务商端。</p>
+          </div>
+          <div class="actions">
+            <button class="btn ghost" type="button" id="resetBtn">重置演示数据</button>
+            <button class="btn" type="button" id="exportOrdersBtn">导出 CSV</button>
+            <button class="btn primary" type="button" id="newOrderBtn">新建订单</button>
+          </div>
+        </header>
+
+        <section class="status-strip" aria-label="数据连接状态">
+          <div class="status-copy">
+            <strong>数据源状态</strong>
+            <span id="dataHint">正在加载阶段 1 后台数据...</span>
+          </div>
+          <span class="status-pill fallback" id="dataMode">加载中</span>
+        </section>
+
+        <section class="metrics" aria-label="运营指标" id="metricsSection">
+          <div class="metric">
+            <span>待确认</span>
+            <strong id="metricPending">0</strong>
+          </div>
+          <div class="metric">
+            <span>已报价</span>
+            <strong id="metricQuoted">0</strong>
+          </div>
+          <div class="metric">
+            <span>已派单</span>
+            <strong id="metricAssigned">0</strong>
+          </div>
+          <div class="metric">
+            <span>今日预计收入</span>
+            <strong id="metricRevenue">$0</strong>
+          </div>
+        </section>
+
+        <section class="ops-dashboard" id="opsDashboard" aria-label="平台运营日报">
+          <div class="ops-dashboard-grid">
+            <section class="ops-card" aria-label="今日提醒">
+              <div class="panel-head">
+                <h3>今日提醒</h3>
+                <span id="opsAlertCount">0 条</span>
+              </div>
+              <div class="ops-card-body ops-alert-list" id="opsAlertList"></div>
+            </section>
+            <section class="ops-card" aria-label="重点跟进">
+              <div class="panel-head">
+                <h3>重点跟进</h3>
+                <span id="opsFocusCaption">按当前订单统计</span>
+              </div>
+              <div class="ops-card-body ops-focus-list" id="opsFocusList"></div>
+            </section>
+          </div>
+        </section>
+
+        <section class="workspace" id="ordersView">
+          <section class="panel" aria-label="订单列表">
+            <div class="panel-head">
+              <h3>订单列表</h3>
+              <span id="resultCount" class="order-meta">0 单</span>
+            </div>
+            <div class="filters">
+              <input class="input" id="searchInput" type="search" placeholder="搜索用户、地址、订单号" />
+              <select class="select" id="statusFilter" aria-label="订单状态筛选">
+                <option value="all">全部状态</option>
+                <option value="pending_review">待平台确认</option>
+                <option value="quoted">已报价</option>
+                <option value="accepted_by_customer">客户已确认</option>
+                <option value="assigned">已派单</option>
+                <option value="accepted_by_worker">服务商已接单</option>
+                <option value="in_service">服务中</option>
+                <option value="pending_quality_review">待质量审核</option>
+                <option value="exception_open">异常处理中</option>
+                <option value="completed">已完成</option>
+                <option value="cancelled">已取消</option>
+              </select>
+              <select class="select" id="priorityFilter" aria-label="优先级筛选">
+                <option value="all">全部优先级</option>
+                <option value="urgent">紧急</option>
+                <option value="high">优先处理</option>
+                <option value="normal">常规</option>
+                <option value="low">低优先级</option>
+              </select>
+              <select class="select" id="opsTagFilter" aria-label="运营标签筛选">
+                <option value="all">全部运营标签</option>
+              </select>
+            </div>
+            <div class="order-list" id="orderList"></div>
+          </section>
+
+          <section class="panel detail" aria-label="订单详情">
+            <div class="panel-head">
+              <h3>订单详情</h3>
+              <span id="detailStatus" class="badge pending_review">待平台确认</span>
+            </div>
+            <div id="detailBody"></div>
+          </section>
+        </section>
+
+        <section class="dispatch-shell hidden" id="dispatchView" aria-label="派单看板">
+          <div class="dispatch-toolbar">
+            <select class="select" id="dispatchStatusFilter" aria-label="派单状态筛选">
+              <option value="all">全部待处理订单</option>
+              <option value="needs_quote">待报价</option>
+              <option value="needs_assign">待派单</option>
+              <option value="assigned">已派出</option>
+              <option value="in_service">服务执行中</option>
+              <option value="pending_quality_review">待质量审核</option>
+              <option value="exception_open">异常处理中</option>
+            </select>
+            <select class="select" id="dispatchAreaFilter" aria-label="区域筛选">
+              <option value="all">全部区域</option>
+            </select>
+            <select class="select" id="dispatchPriorityFilter" aria-label="派单优先级筛选">
+              <option value="all">全部优先级</option>
+              <option value="urgent">紧急</option>
+              <option value="high">优先处理</option>
+              <option value="normal">常规</option>
+              <option value="low">低优先级</option>
+            </select>
+            <select class="select" id="dispatchOpsTagFilter" aria-label="派单运营标签筛选">
+              <option value="all">全部运营标签</option>
+            </select>
+            <select class="select" id="dispatchSortFilter" aria-label="派单排序方式">
+              <option value="priority_time">优先级优先</option>
+              <option value="time_priority">时间优先</option>
+            </select>
+            <input class="input" id="dispatchDateFilter" type="date" aria-label="日期筛选" />
+          </div>
+
+          <div class="dispatch-summary" id="dispatchSummary"></div>
+
+          <div class="dispatch-board">
+            <section class="dispatch-column" aria-label="待派单订单">
+              <div class="dispatch-head">
+                <h3>待处理订单</h3>
+                <span id="dispatchResultCount">0 单</span>
+              </div>
+              <div class="dispatch-list" id="dispatchOrderList"></div>
+            </section>
+
+            <section class="dispatch-column" aria-label="服务商日程">
+              <div class="dispatch-head">
+                <h3>服务商日程</h3>
+                <span id="scheduleCaption">按当前筛选展示</span>
+              </div>
+              <div class="schedule-list" id="dispatchScheduleList"></div>
+            </section>
+          </div>
+        </section>
+
+        <section class="archive-shell hidden" id="archiveView" aria-label="完成归档">
+          <div class="archive-toolbar">
+            <input class="input" id="archiveSearchInput" type="search" placeholder="搜索订单号、客户、地址" />
+            <select class="select" id="archiveWorkerFilter" aria-label="服务商筛选">
+              <option value="all">全部服务商</option>
+            </select>
+            <select class="select" id="archiveSettlementFilter" aria-label="结算状态筛选">
+              <option value="all">全部结算状态</option>
+              <option value="pending">待结算</option>
+              <option value="settled">已结算</option>
+            </select>
+            <input class="input" id="archiveDateFilter" type="date" aria-label="完成日期筛选" />
+          </div>
+          <div class="archive-toolbar">
+            <div class="range-pair">
+              <input class="input" id="archiveMinAmount" type="number" min="0" step="0.01" placeholder="最低实收金额" />
+              <input class="input" id="archiveMaxAmount" type="number" min="0" step="0.01" placeholder="最高实收金额" />
+            </div>
+          </div>
+
+          <div class="archive-summary" id="archiveSummary"></div>
+
+          <div class="archive-board">
+            <section class="archive-column" aria-label="已完成订单">
+              <div class="dispatch-head">
+                <h3>已完成订单</h3>
+                <span id="archiveResultCount">0 单</span>
+              </div>
+              <div class="archive-selection">
+                <label>
+                  <input id="archiveSelectAll" type="checkbox" />
+                  <span id="archiveSelectionCount">已选 0 单</span>
+                </label>
+                <div class="worker-actions">
+                  <button class="btn" type="button" id="archiveExportBtn">导出 CSV</button>
+                  <button class="btn" type="button" id="archiveBatchSettleBtn">批量标记已结算</button>
+                </div>
+              </div>
+              <div class="archive-list" id="archiveOrderList"></div>
+            </section>
+
+            <section class="archive-column" aria-label="服务商完成排行">
+              <div class="dispatch-head">
+                <h3>服务商完成排行</h3>
+                <span id="archiveRankingCaption">按当前筛选统计</span>
+              </div>
+              <div class="archive-ranking" id="archiveRankingList"></div>
+            </section>
+          </div>
+        </section>
+
+        <section class="workers-grid hidden" id="workersView" aria-label="服务商管理"></section>
+
+        <section class="acceptance-shell hidden" id="acceptanceView" aria-label="阶段验收">
+          <div class="acceptance-summary" id="acceptanceSummary"></div>
+
+          <div class="acceptance-board">
+            <section class="acceptance-column" aria-label="验收清单">
+              <div class="dispatch-head">
+                <h3>阶段 1 验收清单</h3>
+                <span id="acceptanceResultCaption">按当前演示数据判断</span>
+              </div>
+              <div class="acceptance-list" id="acceptanceChecklist"></div>
+            </section>
+
+            <section class="acceptance-column" aria-label="演示动作">
+              <div class="dispatch-head">
+                <h3>推荐演示动作</h3>
+                <span>一键跳转到对应页面</span>
+              </div>
+              <div class="acceptance-actions" id="acceptanceActions"></div>
+            </section>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div class="modal-shell" id="orderModal" aria-hidden="true">
+      <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="orderModalTitle">
+        <div class="modal-head">
+          <div>
+            <h3 id="orderModalTitle">新建订单</h3>
+            <p>阶段 1 先支持运营后台录入客户、地址、草坪说明和预约时间，提交后默认进入“待平台确认”。</p>
+          </div>
+          <button class="btn ghost" type="button" id="closeOrderModalBtn">关闭</button>
+        </div>
+        <div class="modal-body">
+          <form id="createOrderForm">
+            <div class="form-layout">
+              <div class="field">
+                <label for="createUser">客户姓名</label>
+                <input class="input" id="createUser" name="user" type="text" required />
+              </div>
+              <div class="field">
+                <label for="createPhone">联系电话</label>
+                <input class="input" id="createPhone" name="phone" type="text" required />
+              </div>
+              <div class="field full">
+                <label for="createAddress">服务地址</label>
+                <div class="autocomplete-wrapper">
+                  <input class="input" id="createAddress" name="address" type="text" required autocomplete="off" />
+                  <div class="autocomplete-dropdown" id="createAddressDropdown"></div>
+                </div>
+              </div>
+              <div class="field">
+                <label for="createServiceType">服务类型</label>
+                <select class="select" id="createServiceType" name="serviceType" required>
+                  <option value="一次性割草">一次性割草</option>
+                  <option value="定期割草预约">定期割草预约</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="createRequestedDate">服务日期</label>
+                <input class="input" id="createRequestedDate" name="requestedDate" type="date" required />
+              </div>
+              <div class="field">
+                <label for="createRequestedStart">开始时间</label>
+                <input class="input" id="createRequestedStart" name="requestedStart" type="time" required />
+              </div>
+              <div class="field">
+                <label for="createRequestedEnd">结束时间</label>
+                <input class="input" id="createRequestedEnd" name="requestedEnd" type="time" required />
+              </div>
+              <div class="field">
+                <label for="createLawnSize">草坪面积或范围</label>
+                <input class="input" id="createLawnSize" name="lawnSize" type="text" placeholder="例如：约 180 平方米" required />
+              </div>
+              <div class="field full">
+                <label for="createCondition">现场情况</label>
+                <textarea class="textarea" id="createCondition" name="condition" required></textarea>
+              </div>
+              <div class="field full">
+                <label for="createNote">客户备注</label>
+                <textarea class="textarea" id="createNote" name="note"></textarea>
+              </div>
+            </div>
+          </form>
+        </div>
+        <div class="modal-actions">
+          <button class="btn ghost" type="button" id="cancelOrderModalBtn">取消</button>
+          <button class="btn primary" type="submit" form="createOrderForm" id="submitOrderBtn">保存订单</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-shell" id="workerModal" aria-hidden="true">
+      <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="workerModalTitle">
+        <div class="modal-head">
+          <div>
+            <h3 id="workerModalTitle">编辑服务商资料</h3>
+            <p>阶段 1 先把联系方式、服务区域、审核状态和派单备注管理清楚，机器人维护事项放到后续阶段。</p>
+          </div>
+          <button class="btn ghost" type="button" id="closeWorkerModalBtn">关闭</button>
+        </div>
+        <div class="modal-body">
+          <form id="workerProfileForm">
+            <div class="form-layout">
+              <div class="field">
+                <label for="workerName">姓名</label>
+                <input class="input" id="workerName" name="name" type="text" required />
+              </div>
+              <div class="field">
+                <label for="workerPhone">联系电话</label>
+                <input class="input" id="workerPhone" name="phone" type="text" required />
+              </div>
+              <div class="field full">
+                <label for="workerArea">服务区域</label>
+                <input class="input" id="workerArea" name="area" type="text" required />
+              </div>
+              <div class="field">
+                <label for="workerApprovalStatus">审核状态</label>
+                <select class="select" id="workerApprovalStatus" name="approvalStatus" required>
+                  <option value="approved">已审核通过</option>
+                  <option value="probation">观察中</option>
+                  <option value="pending_info">资料待补充</option>
+                </select>
+              </div>
+              <div class="field full">
+                <label for="workerServiceNote">派单备注</label>
+                <textarea class="textarea" id="workerServiceNote" name="serviceNote"></textarea>
+              </div>
+              <div class="field">
+                <label for="workerLat">纬度 Lat</label>
+                <input class="input" id="workerLat" name="lat" type="number" step="0.0001" placeholder="-36.85" />
+              </div>
+              <div class="field">
+                <label for="workerLng">经度 Lng</label>
+                <input class="input" id="workerLng" name="lng" type="number" step="0.0001" placeholder="174.76" />
+              </div>
+            </div>
+          </form>
+        </div>
+        <div class="modal-actions">
+          <button class="btn ghost" type="button" id="cancelWorkerModalBtn">取消</button>
+          <button class="btn primary" type="submit" form="workerProfileForm" id="submitWorkerModalBtn">保存资料</button>
+        </div>
+      </div>
+    </div>
+    <script src="/mowing-platform/js/clerk-auth.js?v=20260615-acceptance-nav-fix"></script>
+    <script>
+      window.addEventListener("load", async () => {
+        const authShell = document.getElementById("adminAuthShell");
+        const appShell = document.getElementById("adminAppShell");
+        const logoutBtn = document.getElementById("adminLogoutBtn");
+        try {
+          await window.GardenOSAuth.guardPage({
+            requiredRole: "admin",
+            mountTargetId: "adminClerkAuth",
+            loginStatusId: "adminLoginStatus",
+            onUnauthorized() {
+              authShell.classList.remove("hidden-auth");
+              appShell.classList.add("hidden-auth");
+            },
+            onAuthorized() {
+              authShell.classList.add("hidden-auth");
+              appShell.classList.remove("hidden-auth");
+              // 登录成功后从服务器拉取最新数据
+              bootstrap().catch((error) => {
+                dataMode.className = "status-pill fallback";
+                dataMode.textContent = "加载失败";
+                dataHint.textContent = error.message;
+              });
+            },
+          });
+        } catch (error) {
+          document.getElementById("adminLoginStatus").innerHTML = `❌ 初始化失败：${error.message}`;
+          return;
+        }
+        logoutBtn.addEventListener("click", async () => {
+          await window.GardenOSAuth.signOut();
+        });
+      });
+    </script>
+    <script src="/mowing-platform/js/constants.js?v=20260615-acceptance-nav-fix"></script>
+    <script src="/mowing-platform/js/utils.js?v=20260615-acceptance-nav-fix"></script>
+    <script src="/mowing-platform/js/autocomplete.js?v=20260615-acceptance-nav-fix"></script>
+    <script src="/mowing-platform/js/render.js?v=20260615-acceptance-nav-fix"></script>
+    <script src="/mowing-platform/js/api.js?v=20260615-acceptance-nav-fix"></script>
+    <script src="/mowing-platform/js/app.js?v=20260615-acceptance-nav-fix"></script>
+  </body>
+</html>
