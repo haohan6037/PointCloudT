@@ -42,6 +42,7 @@
           <button type="button" data-view="archive">完成归档</button>
           <button type="button" data-view="workers">服务商</button>
           <button type="button" data-view="users">用户管理</button>
+          <button type="button" data-view="mqtt">MQTT 监听</button>
           <button type="button" data-view="acceptance">阶段验收</button>
           <button type="button">价格配置</button>
           <button type="button">运营记录</button>
@@ -272,6 +273,21 @@
           <div class="user-admin-list" id="userAdminList"></div>
         </section>
 
+        <section class="mqtt-shell hidden" id="mqttMonitorView" aria-label="MQTT 监听">
+          <div class="dispatch-head">
+            <h3>MQTT 消息监听</h3>
+            <span id="mqttStatusCaption">等待连接状态</span>
+          </div>
+          <div class="mqtt-toolbar">
+            <input class="input" id="mqttSearchInput" type="search" placeholder="搜索 topic 或 payload" />
+            <input class="input" id="mqttTopicInput" type="text" placeholder="精确 topic，如 HeartBeat" />
+            <button class="btn" type="button" id="refreshMqttBtn">刷新</button>
+            <button class="btn ghost" type="button" id="recordMqttSampleBtn">记录测试消息</button>
+          </div>
+          <div class="mqtt-status-grid" id="mqttStatusGrid"></div>
+          <div class="mqtt-message-list" id="mqttMessageList"></div>
+        </section>
+
         <section class="acceptance-shell hidden" id="acceptanceView" aria-label="阶段验收">
           <div class="acceptance-summary" id="acceptanceSummary"></div>
 
@@ -417,7 +433,7 @@
         </div>
       </div>
     </div>
-    <script src="/mowing-platform/js/clerk-auth.js?v=20260617-users-menu-fix"></script>
+    <script src="/mowing-platform/js/clerk-auth.js?v=20260618-signin-flow-fix"></script>
     <script>
       window.addEventListener("load", async () => {
         const authShell = document.getElementById("adminAuthShell");

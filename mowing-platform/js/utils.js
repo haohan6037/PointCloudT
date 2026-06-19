@@ -2,6 +2,8 @@
 let orders = [];
 let workers = [];
 let users = [];
+let mqttMessages = [];
+let mqttStatus = null;
 let selectedId = "";
 let storeMeta = { mode: "fallback", databaseEnabled: false, error: null };
 let activeView = "orders";
@@ -21,6 +23,7 @@ const workerModal = document.getElementById("workerModal");
 const workerProfileForm = document.getElementById("workerProfileForm");
 const workersView = document.getElementById("workersView");
 const usersView = document.getElementById("usersView");
+const mqttMonitorView = document.getElementById("mqttMonitorView");
 const ordersView = document.getElementById("ordersView");
 const dispatchView = document.getElementById("dispatchView");
 const archiveView = document.getElementById("archiveView");

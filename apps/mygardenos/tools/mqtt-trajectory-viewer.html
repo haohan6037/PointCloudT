@@ -1,0 +1,685 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MyGardenOS MQTT 轨迹查看器</title>
+<style>
+  :root {
+    --green: #0F5A3A; --green2: #2F8B58; --bg: #F4F8F2;
+    --card: #FFFFFF; --text: #183022; --muted: #708476;
+    --line: #D7E5DA; --red: #DE5A42; --blue: #E8F2EA; --yellow: #DDBA52;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    background: var(--bg); color: var(--text); line-height: 1.6;
+  }
+  .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+
+  /* Header */
+  .header {
+    background: linear-gradient(135deg, #0F5A3A, #2F8B58);
+    color: #fff; padding: 24px 32px; border-radius: 16px; margin-bottom: 20px;
+  }
+  .header h1 { font-size: 1.6rem; font-weight: 800; }
+  .header p { opacity: .8; margin-top: 4px; font-size: .9rem; }
+
+  /* Controls */
+  .controls {
+    background: var(--card); border-radius: 14px; padding: 16px 20px;
+    border: 1px solid var(--line); margin-bottom: 16px;
+    display: flex; flex-wrap: wrap; align-items: center; gap: 12px;
+  }
+  .controls label { font-weight: 600; font-size: .85rem; color: var(--muted); }
+  .controls input[type="text"], .controls input[type="url"] {
+    border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px;
+    font-size: .85rem; width: 240px; background: var(--bg);
+  }
+  .controls button {
+    padding: 8px 18px; border-radius: 10px; border: none; font-weight: 600;
+    font-size: .85rem; cursor: pointer; transition: opacity .15s;
+  }
+  .controls button:hover { opacity: .85; }
+  .btn-primary { background: var(--green); color: #fff; }
+  .btn-secondary { background: var(--gray, #ECF2EC); color: var(--text); }
+  .btn-danger { background: var(--red); color: #fff; }
+  .btn-warn { background: var(--yellow); color: #fff; }
+  .controls button:disabled { opacity: .4; cursor: not-allowed; }
+  #statusBar {
+    font-size: .8rem; color: var(--muted); margin-left: auto;
+    background: var(--blue); padding: 4px 12px; border-radius: 8px;
+  }
+
+  /* Layout */
+  .main-grid {
+    display: grid; grid-template-columns: 1fr 320px; gap: 16px;
+  }
+  @media (max-width: 800px) { .main-grid { grid-template-columns: 1fr; } }
+
+  /* Canvas */
+  .canvas-wrap {
+    background: var(--card); border-radius: 14px; border: 1px solid var(--line);
+    padding: 12px; position: relative;
+  }
+  .canvas-wrap canvas {
+    width: 100%; height: auto; display: block;
+    border-radius: 8px; background: #fafcfa;
+  }
+  .canvas-hint {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    color: var(--muted); font-size: 1rem; text-align: center;
+    pointer-events: none;
+  }
+  .canvas-hint strong { display: block; font-size: 1.2rem; color: var(--green); }
+
+  /* Sidebar */
+  .sidebar { display: flex; flex-direction: column; gap: 12px; }
+  .panel {
+    background: var(--card); border-radius: 14px; border: 1px solid var(--line);
+    padding: 16px;
+  }
+  .panel h3 {
+    font-size: .9rem; font-weight: 700; color: var(--green);
+    margin-bottom: 10px; padding-bottom: 8px; border-bottom: 2px solid var(--line);
+  }
+  .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .stat-item {
+    background: var(--blue); border-radius: 8px; padding: 8px 10px;
+  }
+  .stat-item .val {
+    font-size: 1.1rem; font-weight: 700; color: var(--green);
+  }
+  .stat-item .lbl { font-size: .7rem; color: var(--muted); }
+
+  /* Point list */
+  .point-list {
+    max-height: 280px; overflow-y: auto; font-size: .78rem;
+    font-family: "SF Mono", "Fira Code", monospace;
+  }
+  .point-list::-webkit-scrollbar { width: 4px; }
+  .point-list::-webkit-scrollbar-thumb { background: var(--line); border-radius: 4px; }
+  .point-row {
+    display: flex; justify-content: space-between; padding: 3px 6px;
+    border-bottom: 1px solid var(--line);
+  }
+  .point-row:last-child { border-bottom: none; }
+  .point-row .idx { color: var(--muted); min-width: 24px; }
+  .point-row .coord { color: var(--text); }
+  .point-row .yaw { color: var(--green2); }
+  .point-row.current { background: var(--blue); border-radius: 4px; font-weight: 600; }
+
+  /* Options row */
+  .options {
+    display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+    margin-bottom: 8px;
+  }
+  .options label { font-size: .8rem; display: flex; align-items: center; gap: 4px; cursor: pointer; }
+  .options input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; }
+  .options input[type="number"] {
+    width: 60px; border: 1px solid var(--line); border-radius: 6px;
+    padding: 4px 6px; font-size: .8rem;
+  }
+
+  .legend {
+    display: flex; gap: 16px; flex-wrap: wrap; font-size: .8rem; margin-bottom: 8px;
+  }
+  .legend-item { display: flex; align-items: center; gap: 4px; }
+  .legend-dot { width: 12px; height: 12px; border-radius: 50%; display: inline-block; }
+
+  .badge {
+    display: inline-block; padding: 2px 8px; border-radius: 6px;
+    font-size: .75rem; font-weight: 600;
+  }
+  .badge-online { background: #d4edda; color: #155724; }
+  .badge-offline { background: #f8d7da; color: #721c24; }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <!-- Header -->
+  <div class="header">
+    <h1>📡 MyGardenOS MQTT 轨迹查看器</h1>
+    <p>从 HeartBeat 消息中提取位置坐标，实时绘制机器人移动路径</p>
+  </div>
+
+  <!-- Controls -->
+  <div class="controls">
+    <label>API 地址</label>
+    <input id="apiBase" type="url"
+      value="https://mygardenos-mobile-backend-production.up.railway.app" />
+    <button id="connectBtn" class="btn-primary">🔄 连接</button>
+    <button id="autoRefreshBtn" class="btn-secondary">▶ 实时刷新</button>
+    <button id="clearPointsBtn" class="btn-danger">🗑 清除轨迹</button>
+    <button id="clearServerBtn" class="btn-secondary" title="清空服务端消息缓冲">清除服务端</button>
+    <span id="statusBar">未连接</span>
+  </div>
+
+  <!-- Options -->
+  <div class="controls" style="padding:10px 16px; margin-bottom:12px;">
+    <div class="options">
+      <label><input type="checkbox" id="showGrid" checked> 网格</label>
+      <label><input type="checkbox" id="showYaw" checked> 朝向箭头</label>
+      <label><input type="checkbox" id="showPath" checked> 路径线</label>
+      <label><input type="checkbox" id="autoScale" checked> 自动缩放</label>
+      <label>最小间隔 <input type="number" id="minDistance" value="0.1" step="0.05" min="0"> 米</label>
+      <label>机器ID <input id="robotIdFilter" type="text" placeholder="全部" style="width:120px"></label>
+    </div>
+  </div>
+
+  <!-- Main -->
+  <div class="main-grid">
+    <!-- Canvas -->
+    <div class="canvas-wrap">
+      <canvas id="mapCanvas" width="800" height="600"></canvas>
+      <div class="canvas-hint" id="canvasHint">
+        <strong>🧭 等待数据...</strong>
+        <span>连接后自动接收 MQTT HeartBeat 消息</span>
+      </div>
+    </div>
+
+    <!-- Sidebar -->
+    <div class="sidebar">
+      <!-- Stats -->
+      <div class="panel">
+        <h3>📊 轨迹统计</h3>
+        <div class="stat-grid">
+          <div class="stat-item"><div class="val" id="statPoints">0</div><div class="lbl">采集点数</div></div>
+          <div class="stat-item"><div class="val" id="statDistance">0</div><div class="lbl">总距离 (m)</div></div>
+          <div class="stat-item"><div class="val" id="statDuration">0s</div><div class="lbl">持续时间</div></div>
+          <div class="stat-item"><div class="val" id="statRobot">-</div><div class="lbl">最新机器人</div></div>
+          <div class="stat-item"><div class="val" id="statX">-</div><div class="lbl">最新 X (m)</div></div>
+          <div class="stat-item"><div class="val" id="statY">-</div><div class="lbl">最新 Y (m)</div></div>
+        </div>
+      </div>
+
+      <!-- Bounding Box -->
+      <div class="panel">
+        <h3>📐 移动范围 (边界框)</h3>
+        <div class="stat-grid">
+          <div class="stat-item"><div class="val" id="bboxMinX">-</div><div class="lbl">X 最小 (m)</div></div>
+          <div class="stat-item"><div class="val" id="bboxMaxX">-</div><div class="lbl">X 最大 (m)</div></div>
+          <div class="stat-item"><div class="val" id="bboxMinY">-</div><div class="lbl">Y 最小 (m)</div></div>
+          <div class="stat-item"><div class="val" id="bboxMaxY">-</div><div class="lbl">Y 最大 (m)</div></div>
+          <div class="stat-item"><div class="val" id="bboxWidth">-</div><div class="lbl">宽度 (m)</div></div>
+          <div class="stat-item"><div class="val" id="bboxHeight">-</div><div class="lbl">高度 (m)</div></div>
+        </div>
+      </div>
+
+      <!-- Points -->
+      <div class="panel" style="flex:1">
+        <h3>📍 坐标点列表 <span style="font-weight:400;font-size:.75rem;color:var(--muted)">(最近)</span></h3>
+        <div class="point-list" id="pointList">
+          <div style="color:var(--muted);text-align:center;padding:20px;">暂无数据</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ====== State ======
+const state = {
+  points: [],         // { x, y, yaw, robotId, time }
+  connected: false,
+  autoRefresh: false,
+  refreshTimer: null,
+  apiBase: '',
+};
+
+const canvas = document.getElementById('mapCanvas');
+const ctx = canvas.getContext('2d');
+
+// ====== DOM refs ======
+const apiBaseInput = document.getElementById('apiBase');
+const connectBtn = document.getElementById('connectBtn');
+const autoBtn = document.getElementById('autoRefreshBtn');
+const clearPointsBtn = document.getElementById('clearPointsBtn');
+const clearServerBtn = document.getElementById('clearServerBtn');
+const statusBar = document.getElementById('statusBar');
+const canvasHint = document.getElementById('canvasHint');
+const robotIdFilter = document.getElementById('robotIdFilter');
+
+// ====== API ======
+async function apiRequest(path, options = {}) {
+  const url = state.apiBase + path;
+  const res = await fetch(url, {
+    headers: { 'Content-Type': 'application/json', ...options.headers },
+    ...options,
+  });
+  if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
+  return res.json();
+}
+
+async function fetchMessages() {
+  return apiRequest('/iot/mqtt/public/messages');
+}
+
+async function clearServerMessages() {
+  return apiRequest('/iot/mqtt/public/messages/clear', { method: 'POST' });
+}
+
+// ====== Parse HeartBeat ======
+function processMessages(list) {
+  const filterId = robotIdFilter.value.trim().toUpperCase();
+  const minDist = parseFloat(document.getElementById('minDistance').value) || 0;
+
+  for (const msg of list) {
+    if (msg.topic !== 'HeartBeat') continue;
+    const data = msg.json;
+    if (!data || typeof data.x !== 'number' || typeof data.y !== 'number') continue;
+
+    const robotId = (data.robotId || '').toString().toUpperCase();
+    if (filterId && !robotId.includes(filterId)) continue;
+
+    // Deduplicate: skip if coordinates are too close to last point
+    const last = state.points[state.points.length - 1];
+    if (last && robotId === last.robotId) {
+      const dx = data.x - last.x;
+      const dy = data.y - last.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < minDist) continue;
+    }
+
+    state.points.push({
+      x: data.x,
+      y: data.y,
+      yaw: typeof data.yaw === 'number' ? data.yaw : null,
+      robotId,
+      time: new Date().toISOString(),
+      power: typeof data.power === 'number' ? data.power : null,
+      mode: typeof data.mode === 'number' ? data.mode : null,
+      system: typeof data.system === 'number' ? data.system : null,
+    });
+  }
+
+  updateStats();
+  drawMap();
+  updatePointList();
+}
+
+// ====== Drawing ======
+function drawMap() {
+  const pts = state.points;
+  const showGrid = document.getElementById('showGrid').checked;
+  const showYaw = document.getElementById('showYaw').checked;
+  const showPath = document.getElementById('showPath').checked;
+  const autoScale = document.getElementById('autoScale').checked;
+
+  const W = canvas.width;
+  const H = canvas.height;
+  const PAD = 50;
+
+  ctx.clearRect(0, 0, W, H);
+
+  if (pts.length === 0) {
+    canvasHint.style.display = 'block';
+    return;
+  }
+  canvasHint.style.display = 'none';
+
+  // Calculate bounds
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  for (const p of pts) {
+    if (p.x < minX) minX = p.x;
+    if (p.x > maxX) maxX = p.x;
+    if (p.y < minY) minY = p.y;
+    if (p.y > maxY) maxY = p.y;
+  }
+
+  const rangeX = maxX - minX || 1;
+  const rangeY = maxY - minY || 1;
+  const scale = autoScale
+    ? Math.min((W - PAD * 2) / rangeX, (H - PAD * 2) / rangeY)
+    : 80; // 80 pixels per meter as default
+
+  const cx = (W) / 2;
+  const cy = (H) / 2;
+  const midX = (minX + maxX) / 2;
+  const midY = (minY + maxY) / 2;
+
+  function toScreen(x, y) {
+    return [
+      cx + (x - midX) * scale,
+      cy - (y - midY) * scale,  // flip Y: screen Y down, map Y up
+    ];
+  }
+
+  // ---- Grid ----
+  if (showGrid) {
+    ctx.strokeStyle = '#d8e8dc';
+    ctx.lineWidth = 0.5;
+    const gridStep = Math.pow(10, Math.floor(Math.log10(Math.max(rangeX, rangeY) / 5)));
+    const startX = Math.floor(minX / gridStep) * gridStep;
+    const startY = Math.floor(minY / gridStep) * gridStep;
+    for (let gx = startX; gx <= maxX + gridStep; gx += gridStep) {
+      const [sx] = toScreen(gx, 0);
+      ctx.beginPath(); ctx.moveTo(sx, 0); ctx.lineTo(sx, H); ctx.stroke();
+    }
+    for (let gy = startY; gy <= maxY + gridStep; gy += gridStep) {
+      const [, sy] = toScreen(0, gy);
+      ctx.beginPath(); ctx.moveTo(0, sy); ctx.lineTo(W, sy); ctx.stroke();
+    }
+
+    // Grid labels
+    ctx.fillStyle = '#8a9e8e';
+    ctx.font = '10px monospace';
+    ctx.textAlign = 'center';
+    for (let gx = startX; gx <= maxX + gridStep; gx += gridStep) {
+      const [sx] = toScreen(gx, 0);
+      if (sx > 0 && sx < W) {
+        ctx.fillText(gx.toFixed(1), sx, H - 6);
+      }
+    }
+    ctx.textAlign = 'right';
+    for (let gy = startY; gy <= maxY + gridStep; gy += gridStep) {
+      const [, sy] = toScreen(0, gy);
+      if (sy > 0 && sy < H) {
+        ctx.fillText(gy.toFixed(1), PAD - 8, sy + 3);
+      }
+    }
+
+    // Axis
+    ctx.strokeStyle = '#b0c8b4';
+    ctx.lineWidth = 1;
+    const [ox, oy] = toScreen(0, 0);
+    if (ox > 0 && ox < W) { ctx.beginPath(); ctx.moveTo(ox, 0); ctx.lineTo(ox, H); ctx.stroke(); }
+    if (oy > 0 && oy < H) { ctx.beginPath(); ctx.moveTo(0, oy); ctx.lineTo(W, oy); ctx.stroke(); }
+  }
+
+  // ---- Path line ----
+  if (showPath && pts.length >= 2) {
+    // Gradient color along the path (green → blue)
+    for (let i = 1; i < pts.length; i++) {
+      const t = i / (pts.length - 1);
+      const r = Math.round(15 + t * 20);
+      const g = Math.round(90 - t * 40);
+      const b = Math.round(58 + t * 80);
+      ctx.strokeStyle = `rgb(${r},${g},${b})`;
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      const [x1, y1] = toScreen(pts[i - 1].x, pts[i - 1].y);
+      const [x2, y2] = toScreen(pts[i].x, pts[i].y);
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      ctx.stroke();
+    }
+  }
+
+  // ---- Points ----
+  for (let i = 0; i < pts.length; i++) {
+    const p = pts[i];
+    const [sx, sy] = toScreen(p.x, p.y);
+    if (sx < -20 || sx > W + 20 || sy < -20 || sy > H + 20) continue;
+
+    const isFirst = i === 0;
+    const isLast = i === pts.length - 1;
+    const radius = isLast ? 6 : 3;
+
+    // Point dot
+    if (isFirst) {
+      ctx.fillStyle = '#22c55e';
+      ctx.beginPath();
+      ctx.arc(sx, sy, 6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 8px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('S', sx, sy + 3);
+    } else if (isLast) {
+      ctx.fillStyle = '#ef4444';
+      ctx.beginPath();
+      ctx.arc(sx, sy, 6, 0, Math.PI * 2);
+      ctx.fill();
+      // Glow
+      ctx.shadowColor = '#ef4444';
+      ctx.shadowBlur = 8;
+      ctx.beginPath();
+      ctx.arc(sx, sy, 4, 0, Math.PI * 2);
+      ctx.fillStyle = '#fff';
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    } else {
+      ctx.fillStyle = '#0F5A3A';
+      ctx.beginPath();
+      ctx.arc(sx, sy, radius, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Yaw arrow
+    if (showYaw && p.yaw !== null && (isLast || i % 3 === 0)) {
+      const arrowLen = isLast ? 20 : 12;
+      const angle = p.yaw * Math.PI / 180;
+      const ex = sx + Math.sin(angle) * arrowLen;
+      const ey = sy - Math.cos(angle) * arrowLen;
+      ctx.strokeStyle = isLast ? '#ef4444' : '#2F8B58';
+      ctx.lineWidth = isLast ? 2.5 : 1.5;
+      ctx.beginPath();
+      ctx.moveTo(sx, sy);
+      ctx.lineTo(ex, ey);
+      ctx.stroke();
+      // Arrowhead
+      const headSize = isLast ? 6 : 4;
+      const headAngle = Math.PI / 6;
+      ctx.beginPath();
+      ctx.moveTo(ex, ey);
+      ctx.lineTo(ex - headSize * Math.sin(angle - headAngle), ey + headSize * Math.cos(angle - headAngle));
+      ctx.moveTo(ex, ey);
+      ctx.lineTo(ex - headSize * Math.sin(angle + headAngle), ey + headSize * Math.cos(angle + headAngle));
+      ctx.stroke();
+    }
+  }
+
+  // Last point label
+  if (pts.length > 0) {
+    const last = pts[pts.length - 1];
+    const [sx, sy] = toScreen(last.x, last.y);
+    ctx.fillStyle = '#183022';
+    ctx.font = '11px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText(`(${last.x.toFixed(2)}, ${last.y.toFixed(2)})`, sx + 10, sy + 4);
+  }
+}
+
+// ====== Stats ======
+function updateStats() {
+  const pts = state.points;
+  const count = pts.length;
+
+  document.getElementById('statPoints').textContent = count;
+
+  if (count === 0) {
+    document.getElementById('statDistance').textContent = '0';
+    document.getElementById('statDuration').textContent = '0s';
+    document.getElementById('statRobot').textContent = '-';
+    document.getElementById('statX').textContent = '-';
+    document.getElementById('statY').textContent = '-';
+    document.getElementById('bboxMinX').textContent = '-';
+    document.getElementById('bboxMaxX').textContent = '-';
+    document.getElementById('bboxMinY').textContent = '-';
+    document.getElementById('bboxMaxY').textContent = '-';
+    document.getElementById('bboxWidth').textContent = '-';
+    document.getElementById('bboxHeight').textContent = '-';
+    return;
+  }
+
+  // Total distance
+  let totalDist = 0;
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  for (let i = 0; i < pts.length; i++) {
+    if (pts[i].x < minX) minX = pts[i].x;
+    if (pts[i].x > maxX) maxX = pts[i].x;
+    if (pts[i].y < minY) minY = pts[i].y;
+    if (pts[i].y > maxY) maxY = pts[i].y;
+    if (i > 0) {
+      const dx = pts[i].x - pts[i-1].x;
+      const dy = pts[i].y - pts[i-1].y;
+      totalDist += Math.sqrt(dx * dx + dy * dy);
+    }
+  }
+
+  const last = pts[pts.length - 1];
+  document.getElementById('statDistance').textContent = totalDist.toFixed(2);
+  document.getElementById('statDuration').textContent = count > 1
+    ? formatDuration((new Date(pts[count-1].time) - new Date(pts[0].time)) / 1000)
+    : '0s';
+  document.getElementById('statRobot').textContent = last.robotId || '-';
+  document.getElementById('statX').textContent = last.x.toFixed(2);
+  document.getElementById('statY').textContent = last.y.toFixed(2);
+
+  document.getElementById('bboxMinX').textContent = minX.toFixed(2);
+  document.getElementById('bboxMaxX').textContent = maxX.toFixed(2);
+  document.getElementById('bboxMinY').textContent = minY.toFixed(2);
+  document.getElementById('bboxMaxY').textContent = maxY.toFixed(2);
+  document.getElementById('bboxWidth').textContent = (maxX - minX).toFixed(2);
+  document.getElementById('bboxHeight').textContent = (maxY - minY).toFixed(2);
+}
+
+function updatePointList() {
+  const container = document.getElementById('pointList');
+  const pts = state.points;
+  if (pts.length === 0) {
+    container.innerHTML = '<div style="color:var(--muted);text-align:center;padding:20px;">暂无数据</div>';
+    return;
+  }
+
+  // Show last 50 points
+  const slice = pts.slice(-50);
+  container.innerHTML = slice.map((p, i) => {
+    const idx = pts.length - slice.length + i;
+    const isCurrent = i === slice.length - 1;
+    return `<div class="point-row ${isCurrent ? 'current' : ''}">
+      <span class="idx">#${idx}</span>
+      <span class="coord">x:${p.x.toFixed(2)} y:${p.y.toFixed(2)}</span>
+      <span class="yaw">${p.yaw !== null ? p.yaw.toFixed(1) + '°' : '-'}</span>
+    </div>`;
+  }).join('');
+  container.scrollTop = container.scrollHeight;
+}
+
+function formatDuration(seconds) {
+  if (seconds < 60) return seconds.toFixed(0) + 's';
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  return `${m}m${s}s`;
+}
+
+// ====== Connect / Poll ======
+async function connect() {
+  const base = apiBaseInput.value.trim().replace(/\/+$/, '');
+  if (!base) { statusBar.textContent = '⚠️ 请输入 API 地址'; return; }
+  state.apiBase = base;
+
+  statusBar.textContent = '⏳ 连接中...';
+  try {
+    const status = await apiRequest('/iot/mqtt/public/status');
+    state.connected = true;
+    connectBtn.textContent = '✅ 已连接';
+    connectBtn.style.background = '#22c55e';
+    statusBar.textContent = `已连接 ${status.host}:${status.port} | 话题: ${status.topics.join(', ')}`;
+
+    // Initial fetch
+    const messages = await fetchMessages();
+    processMessages(messages);
+    statusBar.textContent += ` | 收到 ${messages.length} 条消息`;
+  } catch (err) {
+    state.connected = false;
+    connectBtn.textContent = '🔄 重试连接';
+    connectBtn.style.background = '';
+    statusBar.textContent = `❌ 连接失败: ${err.message}`;
+  }
+}
+
+async function refresh() {
+  if (!state.connected) return;
+  try {
+    const messages = await fetchMessages();
+    const before = state.points.length;
+    processMessages(messages);
+    const added = state.points.length - before;
+    if (added > 0) {
+      statusBar.textContent = `✅ 新增 ${added} 个轨迹点，共 ${state.points.length} 点`;
+    } else {
+      statusBar.textContent = `🔄 已刷新 (${state.points.length} 点)`;
+    }
+  } catch (err) {
+    statusBar.textContent = `⚠️ 刷新失败: ${err.message}`;
+  }
+}
+
+function toggleAutoRefresh() {
+  if (state.autoRefresh) {
+    clearInterval(state.refreshTimer);
+    state.refreshTimer = null;
+    state.autoRefresh = false;
+    autoBtn.textContent = '▶ 实时刷新';
+    autoBtn.className = 'btn-secondary';
+  } else {
+    state.autoRefresh = true;
+    autoBtn.textContent = '⏹ 停止刷新';
+    autoBtn.className = 'btn-danger';
+    refresh(); // immediate
+    state.refreshTimer = setInterval(refresh, 3000);
+  }
+}
+
+function clearTrajectory() {
+  state.points = [];
+  updateStats();
+  drawMap();
+  updatePointList();
+  statusBar.textContent = '🗑 轨迹已清除';
+}
+
+async function clearServer() {
+  try {
+    const result = await clearServerMessages();
+    statusBar.textContent = `🗑 服务端已清除 ${result.cleared || 0} 条消息`;
+    if (state.autoRefresh) refresh();
+  } catch (err) {
+    statusBar.textContent = `⚠️ 清除失败: ${err.message}`;
+  }
+}
+
+// ====== Events ======
+connectBtn.addEventListener('click', connect);
+autoBtn.addEventListener('click', toggleAutoRefresh);
+clearPointsBtn.addEventListener('click', clearTrajectory);
+clearServerBtn.addEventListener('click', clearServer);
+
+robotIdFilter.addEventListener('input', () => {
+  // Re-process all existing messages? No, just filter during next refresh.
+  // Instead, re-draw with existing points
+  drawMap();
+});
+
+// Re-draw on option change
+['showGrid', 'showYaw', 'showPath', 'autoScale', 'minDistance'].forEach(id => {
+  document.getElementById(id).addEventListener('change', drawMap);
+});
+document.getElementById('minDistance').addEventListener('input', drawMap);
+
+// Auto-resize canvas
+function resizeCanvas() {
+  const wrap = canvas.parentElement;
+  const w = wrap.clientWidth - 24;
+  // Keep 4:3 aspect ratio
+  canvas.width = Math.min(w, 960);
+  canvas.height = Math.round(canvas.width * 0.65);
+  drawMap();
+}
+window.addEventListener('resize', resizeCanvas);
+setTimeout(resizeCanvas, 100);
+
+// Auto-connect on page load (wait a moment for layout)
+setTimeout(() => {
+  if (!state.connected) connect();
+}, 500);
+
+console.log('MyGardenOS MQTT 轨迹查看器已加载');
+console.log('点列表存储在 state.points 中，可在控制台操作');
+</script>
+</body>
+</html>

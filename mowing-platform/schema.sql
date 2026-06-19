@@ -79,3 +79,22 @@ alter table if exists app_users add column if not exists role text not null defa
 alter table if exists app_users add column if not exists status text not null default 'active';
 
 create index if not exists idx_app_users_role on app_users(role);
+
+create table if not exists mqtt_messages (
+    id bigserial primary key,
+    topic text not null,
+    payload text not null,
+    payload_json jsonb,
+    robot_id text not null default '',
+    message_type text not null default '',
+    source text not null default 'mqtt',
+    received_at timestamptz not null default now()
+);
+
+alter table if exists mqtt_messages add column if not exists robot_id text not null default '';
+alter table if exists mqtt_messages add column if not exists message_type text not null default '';
+
+create index if not exists idx_mqtt_messages_received_at on mqtt_messages(received_at desc);
+create index if not exists idx_mqtt_messages_topic on mqtt_messages(topic);
+create index if not exists idx_mqtt_messages_robot_id on mqtt_messages(robot_id);
+create index if not exists idx_mqtt_messages_message_type on mqtt_messages(message_type);

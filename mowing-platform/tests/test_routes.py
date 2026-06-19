@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import time
 import urllib.parse
 
 
@@ -147,6 +148,83 @@ class TestUserRoles:
         )
         assert resp.status_code == 200
         assert resp.json()["user"]["role"] == "server"
+
+
+class TestMqttMonitor:
+    """MQTT monitoring and persistence / MQTT 监听与存储."""
+
+    def test_mqtt_messages_require_admin_actor(self, client):
+        resp = client.get("/api/mqtt/messages")
+        assert resp.status_code == 403
+
+    def test_admin_can_record_and_query_mqtt_messages(self, client):
+        headers = {"X-GardenOS-Actor-Email": "haohan6037@gmail.com"}
+        resp = client.post(
+            "/api/mqtt/messages",
+            headers=headers,
+            json={
+                "topic": "HeartBeat",
+                "payload": json.dumps({"robotId": "TEST-MOWER", "power": 91}),
+                "source": "test",
+            },
+        )
+        assert resp.status_code == 200
+        message = resp.json()["message"]
+        assert message["topic"] == "HeartBeat"
+        assert message["json"]["robotId"] == "TEST-MOWER"
+        assert message["robotId"] == "TEST-MOWER"
+        assert message["messageType"] == "HeartBeat"
+
+        resp = client.get("/api/mqtt/messages", headers=headers, params={"topic": "HeartBeat", "q": "TEST-MOWER"})
+        assert resp.status_code == 200
+        messages = resp.json()["messages"]
+        assert any(item["json"] and item["json"].get("robotId") == "TEST-MOWER" for item in messages)
+        assert any(item["robotId"] == "TEST-MOWER" for item in messages)
+
+    def test_admin_can_read_mqtt_status(self, client):
+        resp = client.get("/api/mqtt/status", headers={"X-GardenOS-Actor-Email": "haohan6037@gmail.com"})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "topics" in data
+        assert "started" in data
+        assert "queueDepth" in data
+        assert "rawLogDir" in data
+
+    def test_monitor_writes_raw_ndjson_and_batches(self, tmp_path, monkeypatch):
+        from mqtt_monitor import PlatformMqttMonitor
+
+        class FakeStore:
+            def __init__(self) -> None:
+                self.messages = []
+
+            def record_mqtt_messages(self, messages):
+                self.messages.extend(messages)
+                return messages
+
+        class FakeService:
+            def __init__(self) -> None:
+                self.store = FakeStore()
+
+        service = FakeService()
+        monkeypatch.setenv("MQTT_RAW_LOG_DIR", str(tmp_path))
+        monkeypatch.setenv("MQTT_BATCH_SIZE", "2")
+        monkeypatch.setenv("MQTT_FLUSH_INTERVAL_SECONDS", "0.1")
+        monitor = PlatformMqttMonitor(service)
+
+        assert monitor.record_received_message("HeartBeat", json.dumps({"robotId": "QUEUE-MOWER"}), "test")
+        assert monitor.record_received_message("ResponseCommand", json.dumps({"command": "$STATUS", "robotId": "QUEUE-MOWER"}), "test")
+
+        deadline = time.time() + 2
+        while time.time() < deadline and len(service.store.messages) < 2:
+            time.sleep(0.02)
+        monitor.stop()
+
+        assert len(service.store.messages) == 2
+        raw_files = list(tmp_path.glob("*/*.ndjson"))
+        assert raw_files
+        raw_text = "\n".join(path.read_text(encoding="utf-8") for path in raw_files)
+        assert "HeartBeat" in raw_text
+        assert "ResponseCommand" in raw_text
 
 
 class TestCustomerAuth:

@@ -197,6 +197,29 @@ If broad context is required, explain why first.
 
 ---
 
+## Project Long-Term Memory
+
+The project long-term memory file is:
+
+```text
+docs/PROJECT_MEMORY.md
+```
+
+At the end of every task, update this file when the task changes any of the following:
+
+* product scope or business workflow
+* system architecture or module boundaries
+* database, environment, deployment, or startup behavior
+* authentication, authorization, role, or permission rules
+* important validation commands or known blockers
+* next-step priorities or handoff state
+
+Memory updates must be concise and factual. Do not store secrets, API keys, passwords, cookies, tokens, private keys, or full connection strings. Record secret names or environment variable names only when needed.
+
+Before starting a non-trivial task, read `docs/PROJECT_MEMORY.md` if it exists, then inspect the current worktree as the source of truth.
+
+---
+
 ## Model Routing
 
 Use the cheapest suitable model.

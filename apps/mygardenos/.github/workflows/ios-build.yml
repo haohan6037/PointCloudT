@@ -1,0 +1,98 @@
+name: Build iOS app
+
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: "EAS build profile: preview for real iPhone, simulator for iOS Simulator, production for App Store/TestFlight"
+        required: true
+        default: "preview"
+        type: choice
+        options:
+          - preview
+          - simulator
+          - production
+      release_tag:
+        description: "GitHub Release tag to attach the build link to"
+        required: true
+        default: "ios-dev-latest"
+
+permissions:
+  contents: write
+
+jobs:
+  eas-ios:
+    name: EAS iOS build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Setup Expo/EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Build iOS with EAS
+        id: build
+        run: |
+          set -euo pipefail
+          eas build --platform ios --profile "${{ inputs.profile }}" --non-interactive --wait --json > eas-build-result.json
+          cat eas-build-result.json
+          node - <<'NODE' >> "$GITHUB_OUTPUT"
+          const fs = require('fs');
+          const raw = fs.readFileSync('eas-build-result.json', 'utf8');
+          const data = JSON.parse(raw);
+          const build = Array.isArray(data) ? data[0] : data;
+          const url = build?.artifacts?.buildUrl || build?.artifactUrl || build?.buildUrl || '';
+          const id = build?.id || '';
+          if (!url) {
+            console.error('Could not find EAS artifact URL in build output');
+            process.exit(1);
+          }
+          console.log(`artifact_url=${url}`);
+          console.log(`build_id=${id}`);
+          NODE
+
+      - name: Write release notes
+        run: |
+          cat > ../ios-build-notes.md <<EOF
+          # MyGardenOS iOS build
+
+          Profile: `${{ inputs.profile }}`
+
+          EAS build id: `${{ steps.build.outputs.build_id }}`
+
+          Download/install URL:
+          ${{ steps.build.outputs.artifact_url }}
+
+          Notes:
+          - `preview` builds are for registered iPhone devices and require Apple signing/provisioning.
+          - `simulator` builds run only in an iOS Simulator, not on a physical iPhone.
+          - `production` builds are intended for App Store/TestFlight submission.
+          EOF
+
+      - name: Publish GitHub Release with download link
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.release_tag }}
+          name: MyGardenOS iOS ${{ inputs.profile }} build
+          body_path: ios-build-notes.md
+          files: mobile/eas-build-result.json

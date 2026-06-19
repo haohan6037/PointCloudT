@@ -4,6 +4,7 @@ from __future__ import annotations
 import copy
 import json
 import os
+from collections import deque
 from decimal import Decimal
 from typing import Any
 
@@ -26,6 +27,33 @@ DEFAULT_ADMIN_EMAILS = {"haohan6037@gmail.com", "kaiyu.yang@youngproperty.co.nz"
 ROLE_ALIASES = {"provider": "server"}
 VALID_USER_ROLES = {"admin", "customer", "server"}
 VALID_USER_STATUSES = {"active", "disabled"}
+
+
+def parse_json_payload(payload: str) -> Any:
+    """Parse JSON payload when possible / 尽量解析 JSON payload."""
+    try:
+        return json.loads(payload)
+    except json.JSONDecodeError:
+        return None
+
+
+def mqtt_message_metadata(topic: str, payload: str, parsed: Any = None) -> dict[str, str]:
+    """Extract analysis-friendly MQTT metadata / 提取便于分析的 MQTT 元数据."""
+    parsed_value = parsed if parsed is not None else parse_json_payload(payload)
+    robot_id = ""
+    message_type = topic
+    if isinstance(parsed_value, dict):
+        robot_id = str(parsed_value.get("robotId") or parsed_value.get("robot_id") or "").strip()
+        command = str(parsed_value.get("command") or "").strip()
+        if command:
+            message_type = command.split(",", 1)[0]
+        elif topic == "HeartBeat":
+            message_type = "HeartBeat"
+        elif topic == "ResponseCommand":
+            message_type = "ResponseCommand"
+    elif topic.startswith("$SYS/"):
+        message_type = "$SYS"
+    return {"robotId": robot_id, "messageType": message_type}
 
 
 def normalize_user_role(role: str) -> str:
@@ -59,11 +87,13 @@ class InMemoryStore:
         self.customers: dict[str, dict[str, Any]] = {
             DEFAULT_CUSTOMER_EMAIL: self._blank_customer_profile(DEFAULT_CUSTOMER_EMAIL, DEFAULT_CUSTOMER_NAME),
         }
+        self.mqtt_messages: deque[dict[str, Any]] = deque(maxlen=1000)
         self.users: dict[str, dict[str, Any]] = {
             DEFAULT_CUSTOMER_EMAIL: self._blank_user(DEFAULT_CUSTOMER_EMAIL, DEFAULT_CUSTOMER_NAME),
         }
         for admin_email in sorted(DEFAULT_ADMIN_EMAILS):
             self.users[admin_email] = self._blank_user(admin_email)
+        self._next_mqtt_id = 1
 
     def bootstrap(self) -> dict[str, Any]:
         return {"orders": self.orders, "workers": self.workers}
@@ -475,6 +505,61 @@ class InMemoryStore:
         user["status"] = status
         user["updated_at"] = timestamp()
         return user
+
+    def record_mqtt_message(
+        self,
+        topic: str,
+        payload: str,
+        source: str = "mqtt",
+        received_at: str | None = None,
+    ) -> dict[str, Any]:
+        """Persist an MQTT message in fallback memory / 在内存模式保存 MQTT 消息."""
+        return self.record_mqtt_messages([
+            {"topic": topic, "payload": payload, "source": source, "received_at": received_at}
+        ])[0]
+
+    def record_mqtt_messages(self, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Persist a batch of MQTT messages in fallback memory / 批量保存 MQTT 消息到内存."""
+        saved: list[dict[str, Any]] = []
+        for item in messages:
+            payload = str(item["payload"])
+            parsed = parse_json_payload(payload)
+            metadata = mqtt_message_metadata(str(item["topic"]), payload, parsed)
+            message = {
+                "id": self._next_mqtt_id,
+                "topic": str(item["topic"]),
+                "payload": payload,
+                "json": parsed,
+                "robotId": metadata["robotId"],
+                "messageType": metadata["messageType"],
+                "source": str(item.get("source") or "mqtt"),
+                "receivedAt": item.get("received_at") or timestamp(),
+            }
+            self._next_mqtt_id += 1
+            self.mqtt_messages.appendleft(message)
+            saved.append(message)
+        return saved
+
+    def list_mqtt_messages(self, limit: int = 100, topic: str = "", q: str = "") -> list[dict[str, Any]]:
+        """List MQTT messages from fallback memory / 从内存模式读取 MQTT 消息."""
+        normalized_topic = topic.strip()
+        query = q.strip().lower()
+        items = list(self.mqtt_messages)
+        if normalized_topic:
+            items = [item for item in items if item["topic"] == normalized_topic]
+        if query:
+            items = [
+                item for item in items
+                if query in item["topic"].lower()
+                or query in item["payload"].lower()
+                or query in item.get("robotId", "").lower()
+                or query in item.get("messageType", "").lower()
+            ]
+        return items[: max(1, min(limit, 500))]
+
+    @staticmethod
+    def _try_parse_json(payload: str) -> Any:
+        return parse_json_payload(payload)
 
     def add_demo_order(self) -> dict[str, Any]:
         order = {
@@ -1586,6 +1671,100 @@ class PostgresStore:
                 row = cur.fetchone()
             conn.commit()
         return self._row_to_app_user(row)
+
+    def record_mqtt_message(
+        self,
+        topic: str,
+        payload: str,
+        source: str = "mqtt",
+        received_at: str | None = None,
+    ) -> dict[str, Any]:
+        """Persist an MQTT message / 持久化 MQTT 消息."""
+        return self.record_mqtt_messages([
+            {"topic": topic, "payload": payload, "source": source, "received_at": received_at}
+        ])[0]
+
+    def record_mqtt_messages(self, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Persist MQTT messages in one transaction / 单事务批量持久化 MQTT 消息."""
+        saved: list[dict[str, Any]] = []
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                for item in messages:
+                    payload = str(item["payload"])
+                    parsed = parse_json_payload(payload)
+                    metadata = mqtt_message_metadata(str(item["topic"]), payload, parsed)
+                    cur.execute(
+                        """
+                        insert into mqtt_messages (
+                            topic, payload, payload_json, robot_id, message_type, source, received_at
+                        )
+                        values (%s, %s, %s, %s, %s, %s, coalesce(%s::timestamptz, now()))
+                        returning id, topic, payload, payload_json, robot_id, message_type, source, received_at
+                        """,
+                        (
+                            str(item["topic"]),
+                            payload,
+                            json.dumps(parsed, ensure_ascii=False) if parsed is not None else None,
+                            metadata["robotId"],
+                            metadata["messageType"],
+                            str(item.get("source") or "mqtt"),
+                            item.get("received_at"),
+                        ),
+                    )
+                    saved.append(self._row_to_mqtt_message(cur.fetchone()))
+            conn.commit()
+        return saved
+
+    def list_mqtt_messages(self, limit: int = 100, topic: str = "", q: str = "") -> list[dict[str, Any]]:
+        """List persisted MQTT messages / 读取持久化 MQTT 消息."""
+        limit = max(1, min(limit, 500))
+        where: list[str] = []
+        params: list[Any] = []
+        if topic.strip():
+            where.append("topic = %s")
+            params.append(topic.strip())
+        if q.strip():
+            where.append("(topic ilike %s or payload ilike %s or robot_id ilike %s or message_type ilike %s)")
+            needle = f"%{q.strip()}%"
+            params.extend([needle, needle, needle, needle])
+        where_sql = f"where {' and '.join(where)}" if where else ""
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"""
+                    select id, topic, payload, payload_json, robot_id, message_type, source, received_at
+                    from mqtt_messages
+                    {where_sql}
+                    order by received_at desc, id desc
+                    limit %s
+                    """,
+                    (*params, limit),
+                )
+                rows = cur.fetchall()
+        return [self._row_to_mqtt_message(row) for row in rows]
+
+    @staticmethod
+    def _try_parse_json(payload: str) -> Any:
+        return parse_json_payload(payload)
+
+    @staticmethod
+    def _row_to_mqtt_message(row: tuple[Any, ...]) -> dict[str, Any]:
+        payload_json = row[3]
+        if isinstance(payload_json, str):
+            try:
+                payload_json = json.loads(payload_json)
+            except json.JSONDecodeError:
+                payload_json = None
+        return {
+            "id": row[0],
+            "topic": row[1],
+            "payload": row[2],
+            "json": payload_json,
+            "robotId": row[4],
+            "messageType": row[5],
+            "source": row[6],
+            "receivedAt": row[7].isoformat() if hasattr(row[7], "isoformat") else str(row[7]),
+        }
 
     def add_demo_order(self) -> dict[str, Any]:
         order = {

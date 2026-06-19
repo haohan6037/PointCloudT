@@ -1,0 +1,32 @@
+{
+  "scripts": {
+    "start": "expo start",
+    "ios": "expo run:ios",
+    "typecheck": "tsc --noEmit",
+    "build:ios:preview": "eas build --platform ios --profile preview",
+    "build:ios:simulator": "eas build --platform ios --profile simulator",
+    "build:ios:production": "eas build --platform ios --profile production",
+    "android": "expo run:android"
+  },
+  "dependencies": {
+    "@expo/vector-icons": "^14.0.4",
+    "@react-native-async-storage/async-storage": "^1.24.0",
+    "expo": "^52.0.25",
+    "expo-asset": "^55.0.17",
+    "expo-clipboard": "~7.0.1",
+    "expo-image-manipulator": "~13.0.6",
+    "expo-image-picker": "~16.0.6",
+    "expo-location": "~18.0.10",
+    "expo-status-bar": "^2.0.1",
+    "react": "18.3.1",
+    "react-native": "0.76.6",
+    "react-native-ble-plx": "^3.5.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.28",
+    "typescript": "^5.9.3"
+  },
+  "private": true,
+  "name": "mobile",
+  "version": "1.0.0"
+}
