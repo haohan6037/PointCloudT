@@ -35,6 +35,31 @@
       margin-top: 4px;
       min-height: 18px;
     }
+    /* ── 登录/注册 Tab ── */
+    .auth-tabs {
+      display: flex;
+      gap: 0;
+      margin-bottom: 16px;
+      border-bottom: 2px solid var(--line);
+    }
+    .auth-tab {
+      flex: 1;
+      padding: 10px 0;
+      font-size: 15px;
+      font-weight: 600;
+      text-align: center;
+      background: none;
+      border: none;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -2px;
+      cursor: pointer;
+      color: var(--muted);
+      transition: color 0.15s, border-color 0.15s;
+    }
+    .auth-tab.active {
+      color: var(--primary);
+      border-bottom-color: var(--primary);
+    }
   </style>
 </head>
 <body class="customer-portal">
@@ -44,10 +69,15 @@
     <p>专业草坪养护 · 树木修剪 · 园艺服务</p>
   </div>
 
-  <!-- ====== 登录 ====== -->
+  <!-- ====== 登录 / 注册 ====== -->
   <div class="card" id="loginCard">
-    <h2>登录 / 注册</h2>
-    <p style="font-size:13px;color:var(--muted);margin-bottom:14px;">使用 Clerk 登录后即可提交预约并查看订单进度。</p>
+    <div class="auth-tabs">
+      <button class="auth-tab active" id="signInTab" type="button">登录</button>
+      <button class="auth-tab" id="signUpTab" type="button">注册</button>
+    </div>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:14px;" id="authHint">
+      已有账号？使用邮箱和密码登录。Gmail 用户可直接用 Google 账号登录。
+    </p>
     <div id="clerkAuth"></div>
     <div id="loginStatus" style="text-align:center;margin-top:10px;font-size:13px;"></div>
   </div>
@@ -206,7 +236,7 @@
   </div><!-- /appContent -->
 </div>
 
-<script src="/mowing-platform/js/clerk-auth.js?v=20260615-auth-fix"></script>
+<script src="/mowing-platform/js/clerk-auth.js?v=20260618-signin-flow-fix"></script>
 <script>
 // ═══════════════════════════════════════════════════
 // Global state / 全局状态
@@ -303,11 +333,45 @@ function loginSuccess() {
   enforceProfileGate();
 }
 
+  // ── 登录/注册 Tab 切换 ──
+  const signInTab = document.getElementById("signInTab");
+  const signUpTab = document.getElementById("signUpTab");
+  const authHint = document.getElementById("authHint");
+  let currentAuthMode = "signIn";
+
+  const authModeHints = {
+    signIn: "已有账号？使用邮箱和密码登录。Gmail 用户可直接用 Google 账号登录。",
+    signUp: "还没有账号？注册后可提交预约并查看订单进度。",
+  };
+
+  async function mountAuthByMode() {
+    try {
+      await window.GardenOSAuth.ensureLoaded();
+      if (currentAuthMode === "signUp") {
+        await window.GardenOSAuth.mountSignUp("clerkAuth");
+      } else {
+        await window.GardenOSAuth.mountSignIn("clerkAuth");
+      }
+    } catch (error) {
+      document.getElementById("loginStatus").innerHTML = `❌ ${error.message}`;
+    }
+  }
+
+  function switchAuthTab(mode) {
+    currentAuthMode = mode;
+    signInTab.classList.toggle("active", mode === "signIn");
+    signUpTab.classList.toggle("active", mode === "signUp");
+    authHint.textContent = authModeHints[mode];
+    mountAuthByMode();
+  }
+
+  signInTab.addEventListener("click", () => switchAuthTab("signIn"));
+  signUpTab.addEventListener("click", () => switchAuthTab("signUp"));
+
 window.addEventListener("load", async () => {
   try {
     await window.GardenOSAuth.guardPage({
       allowedRoles: ["customer", "admin"],
-      mountTargetId: "clerkAuth",
       loginStatusId: "loginStatus",
       onUnauthorized() {
         customerEmail = "";
@@ -317,6 +381,8 @@ window.addEventListener("load", async () => {
         document.getElementById("profileEmail").textContent = "";
         profileGateNotice.classList.add("hidden");
         tabBar.classList.remove("hidden");
+        // 登录/注册组件由 mountAuthByMode() 按当前 tab 状态挂载
+        mountAuthByMode();
       },
       async onAuthorized({ sessionUser }) {
         customerEmail = sessionUser.email;

@@ -109,6 +109,21 @@
     });
   }
 
+  async function mountSignUp(targetId) {
+    const target = document.getElementById(targetId);
+    if (!target) return;
+    target.innerHTML = "";
+    window.Clerk.mountSignUp(target, {
+      signInFallbackRedirectUrl: window.location.pathname,
+      signUpFallbackRedirectUrl: window.location.pathname,
+      appearance: {
+        elements: {
+          card: { boxShadow: "none", border: "0", backgroundColor: "transparent", padding: "0" },
+        },
+      },
+    });
+  }
+
   function _showKeySetup(statusEl, mountTargetId) {
     if (!statusEl) return;
     const targetEl = mountTargetId ? document.getElementById(mountTargetId) : null;
@@ -146,6 +161,7 @@
     const requiredRole = options.requiredRole;
     const allowedRoles = Array.isArray(options.allowedRoles) ? options.allowedRoles : null;
     const loginStatusEl = options.loginStatusId ? document.getElementById(options.loginStatusId) : null;
+    const authMode = options.mode === "signUp" ? "signUp" : "signIn";
 
     function setStatus(message) {
       if (loginStatusEl) loginStatusEl.innerHTML = message || "";
@@ -153,12 +169,34 @@
 
     async function render() {
       if (!window.Clerk?.isSignedIn) {
+        // ── Don't disrupt an active multi-step sign-in flow ──────────────
+        // When the user has entered their email and Clerk transitions to the
+        // password step (or any subsequent factor), isSignedIn is still false.
+        // The Clerk listener fires, and without this guard we would call
+        // onUnauthorized() → mountSignIn() which does target.innerHTML = ""
+        // and remounts from scratch, resetting back to the identifier screen.
+        const signIn = window.Clerk?.client?.signIn;
+        const hasActiveSignIn =
+          signIn &&
+          signIn.status &&
+          signIn.status !== "needs_identifier" &&
+          signIn.status !== "abandoned";
+
+        if (hasActiveSignIn) {
+          setStatus("");
+          return;
+        }
+
         if (typeof options.onUnauthorized === "function") {
           options.onUnauthorized();
         }
         setStatus("");
         if (options.mountTargetId) {
-          await mountSignIn(options.mountTargetId);
+          if (authMode === "signUp") {
+            await mountSignUp(options.mountTargetId);
+          } else {
+            await mountSignIn(options.mountTargetId);
+          }
         }
         return;
       }
@@ -225,5 +263,7 @@
     routeForRole,
     guardPage,
     signOut,
+    mountSignIn,
+    mountSignUp,
   };
 })();

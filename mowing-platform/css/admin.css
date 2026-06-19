@@ -750,14 +750,98 @@
       .archive-shell.hidden,
       .workers-grid.hidden,
       .users-shell.hidden,
+      .mqtt-shell.hidden,
       .acceptance-shell.hidden {
         display: none;
       }
 
-      .users-shell {
+      .users-shell,
+      .mqtt-shell {
         padding: 16px 24px 24px;
         display: grid;
         gap: 12px;
+      }
+
+      .mqtt-toolbar {
+        display: grid;
+        grid-template-columns: minmax(180px, 1fr) minmax(180px, 0.8fr) auto auto;
+        gap: 10px;
+        align-items: center;
+      }
+
+      .mqtt-status-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      .mqtt-status-card,
+      .mqtt-message-card {
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        box-shadow: var(--shadow);
+        padding: 14px 16px;
+      }
+
+      .mqtt-status-card {
+        display: grid;
+        gap: 6px;
+        min-height: 84px;
+      }
+
+      .mqtt-status-card.warning {
+        border-color: #e8d28a;
+        background: #fffdf4;
+      }
+
+      .mqtt-status-card strong {
+        font-size: 15px;
+        word-break: break-word;
+      }
+
+      .mqtt-status-card span,
+      .mqtt-message-card span,
+      .mqtt-message-card small {
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .mqtt-message-list {
+        display: grid;
+        gap: 10px;
+      }
+
+      .mqtt-message-card {
+        display: grid;
+        gap: 10px;
+      }
+
+      .mqtt-message-card header {
+        display: flex;
+        align-items: start;
+        justify-content: space-between;
+        gap: 14px;
+      }
+
+      .mqtt-message-card header div {
+        display: grid;
+        gap: 4px;
+        min-width: 0;
+      }
+
+      .mqtt-message-card pre {
+        margin: 0;
+        max-height: 180px;
+        overflow: auto;
+        white-space: pre-wrap;
+        word-break: break-word;
+        background: #f7f8f4;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 10px;
+        font-size: 12px;
+        line-height: 1.5;
       }
 
       .user-admin-list {

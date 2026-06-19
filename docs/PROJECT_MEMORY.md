@@ -14,6 +14,7 @@ Do not store secrets, API keys, passwords, cookies, tokens, private keys, or ful
 - Main local path: `/Users/happyfamily/MyProject/PointCloudTT`
 - Current primary product: GardenOS mowing service platform.
 - Secondary research/product line: point-cloud to lawn/map extraction pipeline.
+- Robot/mobile product line: MyGardenOS robot app and device integration tooling under `apps/mygardenos/`.
 - Main active app path: `mowing-platform/`
 - Root `index.html` is the point-cloud/lawn-boundary workspace prototype.
 
@@ -45,6 +46,28 @@ The point-cloud side remains a separate product line:
 
 Keep the mowing platform docs and the point-cloud/lawn-recognition docs separate.
 
+### MyGardenOS Robot / Mobile Project
+
+MyGardenOS now lives inside this repository at:
+
+```text
+apps/mygardenos/
+```
+
+It was migrated from `/Users/happyfamily/MyProject/gardenos-mobile/MyGardenOS` to make related GardenOS work easier to manage in one workspace.
+
+Scope:
+
+- `apps/mygardenos/mobile`: React Native / Expo mobile app.
+- `apps/mygardenos/backend`: FastAPI device/backend service with auth, profiles, families, devices, schedule, MQTT monitor, and robot command endpoints.
+- `apps/mygardenos/tools`: browser BLE/MQTT/map-transfer tools.
+- `apps/mygardenos/mqtt`: local Mosquitto config.
+
+Boundary rule:
+
+- Keep MyGardenOS independently runnable. Do not merge its backend into `mowing-platform/` by default.
+- Future integration should happen through explicit API contracts so the robot/device service can later be split out as a microservice.
+
 ---
 
 ## Current Architecture
@@ -59,6 +82,14 @@ Keep the mowing platform docs and the point-cloud/lawn-recognition docs separate
 - Address and distance logic: `mowing-platform/address_service.py`.
 - PostgreSQL schema: `mowing-platform/schema.sql`.
 - Local startup script: `start.sh`.
+
+### MyGardenOS Runtime
+
+- App root: `apps/mygardenos/`.
+- Backend: `apps/mygardenos/backend/app/main.py`.
+- Mobile app: `apps/mygardenos/mobile/App.tsx`.
+- BLE/MQTT web tool: `apps/mygardenos/tools/ble-mqtt-config/index.html`.
+- Local Docker/PostGIS/MQTT compose file: `apps/mygardenos/docker-compose.yml`.
 
 ### Frontend Entrypoints
 
@@ -174,6 +205,7 @@ Core tables:
 - `mowing_orders`
 - `app_users`
 - `customer_profiles`
+- `mqtt_messages`
 
 Important behavior:
 
@@ -199,6 +231,7 @@ Completed or mostly functional:
 - Role split across customer/admin/server.
 - Local dev PostgreSQL startup via `start.sh`.
 - AWS test deployment documentation and Terraform scaffold.
+- Admin MQTT monitor view for robot/broker messages. MQTT callback records to a bounded in-memory queue; a background writer appends raw hourly NDJSON under `mowing-platform/data/mqtt-raw/` and batch-inserts analysis rows into `mqtt_messages`.
 
 Known gaps:
 
@@ -208,6 +241,8 @@ Known gaps:
 - Robot maintenance workflows are not phase-1 complete.
 - Geoapify/live address provider status may need re-verification when keys or restrictions change.
 - Point-cloud/lawn recognition remains a separate research pipeline, not yet integrated into the mowing service order flow.
+- MQTT monitor is read/store focused only. Do not add robot command publishing to platform management without a separate safety design.
+- MQTT raw NDJSON is the durable high-volume capture path; PostgreSQL rows are for searchable recent history and analysis metadata (`robot_id`, `message_type`).
 
 ---
 
@@ -221,7 +256,16 @@ node --check mowing-platform/js/clerk-auth.js
 node --check mowing-platform/js/render.js
 node --check mowing-platform/js/app.js
 python3 -m compileall -q mowing-platform/routes.py mowing-platform/store.py mowing-platform/models.py
+python3 -m compileall -q mowing-platform/mqtt_monitor.py
 git diff --check
+```
+
+MyGardenOS validation:
+
+```bash
+cd apps/mygardenos/backend && python3 -m pytest tests
+cd apps/mygardenos/mobile && npm run typecheck
+cd apps/mygardenos/tools/ble-mqtt-config && python3 -m http.server 4173
 ```
 
 Local runtime verification:
@@ -244,6 +288,9 @@ Expected local `/api/health` when PostgreSQL is connected:
 
 ### 2026-06-19
 
+- Added platform admin MQTT monitoring/storage direction: admin can view MQTT messages and the platform stores them through queue -> raw NDJSON -> batched PostgreSQL rows for later analysis; command publishing remains outside the admin platform by default.
+- Migrated the standalone MyGardenOS project into `apps/mygardenos/` as an independently runnable subproject.
+- Preserved service boundaries for future microservice extraction: service platform, robot/device backend, mobile app, BLE/MQTT tools, and point-cloud tooling remain separate.
 - Added this long-term memory file.
 - Added rule to `AGENTS.md`: every task that changes meaningful project state must update this memory.
 - Prepared project summary and system design documentation for current repository state.

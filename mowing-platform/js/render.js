@@ -1885,6 +1885,7 @@ function renderActiveView() {
   const archiveMode = activeView === "archive";
   const workerMode = activeView === "workers";
   const usersMode = activeView === "users";
+  const mqttMode = activeView === "mqtt";
   const acceptanceMode = activeView === "acceptance";
   ordersView.classList.toggle("hidden", !orderMode);
   metricsSection.classList.toggle("hidden", !orderMode);
@@ -1893,6 +1894,7 @@ function renderActiveView() {
   archiveView.classList.toggle("hidden", !archiveMode);
   workersView.classList.toggle("hidden", !workerMode);
   usersView.classList.toggle("hidden", !usersMode);
+  mqttMonitorView.classList.toggle("hidden", !mqttMode);
   acceptanceView.classList.toggle("hidden", !acceptanceMode);
   if (orderMode) {
     pageTitle.textContent = "订单管理";
@@ -1909,6 +1911,9 @@ function renderActiveView() {
   } else if (usersMode) {
     pageTitle.textContent = "用户管理";
     pageSubtitle.textContent = "查看登录用户，分配普通用户、管理员和服务商角色。";
+  } else if (mqttMode) {
+    pageTitle.textContent = "MQTT 监听";
+    pageSubtitle.textContent = "监听机器人 MQTT 上报、broker 日志和响应消息，并保存历史用于后续分析。";
   } else {
     pageTitle.textContent = "服务商管理";
     pageSubtitle.textContent = "查看服务商资料、当天任务顺序和一键推进节点。";
@@ -1925,9 +1930,96 @@ function renderActiveView() {
     renderAcceptanceView();
   } else if (usersMode) {
     renderUsersView();
+  } else if (mqttMode) {
+    renderMqttMonitorView();
   } else if (!orderMode) {
     renderWorkersView();
   }
+}
+
+function renderMqttMonitorView() {
+  if (!mqttMonitorView) return;
+  const caption = document.getElementById("mqttStatusCaption");
+  const statusGrid = document.getElementById("mqttStatusGrid");
+  const list = document.getElementById("mqttMessageList");
+  if (!caption || !statusGrid || !list) return;
+
+  if (!mqttStatus) {
+    caption.textContent = "尚未刷新";
+    statusGrid.innerHTML = `
+      <div class="empty-state">
+        <strong>尚未读取 MQTT 状态</strong>
+        <span>点击刷新后，后台会尝试启动监听并读取已保存的消息。</span>
+      </div>
+    `;
+  } else {
+    const connectedText = mqttStatus.connected ? "已连接" : mqttStatus.started ? "连接中/未确认" : "未启动";
+    caption.textContent = `${connectedText} · ${mqttMessages.length} 条`;
+    statusGrid.innerHTML = `
+      <article class="mqtt-status-card">
+        <strong>${escapeHtml(connectedText)}</strong>
+        <span>监听状态</span>
+      </article>
+      <article class="mqtt-status-card">
+        <strong>${escapeHtml(mqttStatus.host || "-")}:${escapeHtml(String(mqttStatus.port || ""))}</strong>
+        <span>Broker</span>
+      </article>
+      <article class="mqtt-status-card">
+        <strong>${mqttStatus.dependencyAvailable ? "可用" : "缺少 paho-mqtt"}</strong>
+        <span>Python 依赖</span>
+      </article>
+      <article class="mqtt-status-card">
+        <strong>${escapeHtml((mqttStatus.topics || []).join(", ") || "-")}</strong>
+        <span>订阅 topic</span>
+      </article>
+      <article class="mqtt-status-card">
+        <strong>${escapeHtml(String(mqttStatus.queueDepth ?? 0))}/${escapeHtml(String(mqttStatus.queueMaxSize ?? "-"))}</strong>
+        <span>待写队列</span>
+      </article>
+      <article class="mqtt-status-card">
+        <strong>${escapeHtml(String(mqttStatus.persistedMessages ?? 0))}</strong>
+        <span>本次批量入库</span>
+      </article>
+      <article class="mqtt-status-card ${Number(mqttStatus.droppedMessages || 0) > 0 ? "warning" : ""}">
+        <strong>${escapeHtml(String(mqttStatus.droppedMessages ?? 0))}</strong>
+        <span>队列丢弃</span>
+      </article>
+      <article class="mqtt-status-card">
+        <strong>${escapeHtml(String(mqttStatus.rawWrittenMessages ?? 0))}</strong>
+        <span>原始日志</span>
+      </article>
+      ${mqttStatus.lastError ? `<article class="mqtt-status-card warning"><strong>错误</strong><span>${escapeHtml(mqttStatus.lastError)}</span></article>` : ""}
+    `;
+  }
+
+  if (!mqttMessages.length) {
+    list.innerHTML = `
+      <div class="empty-state">
+        <strong>暂无 MQTT 消息</strong>
+        <span>等待机器人上报，或点击“记录测试消息”验证存储链路。</span>
+      </div>
+    `;
+    return;
+  }
+
+  list.innerHTML = mqttMessages
+    .map((message) => {
+      const jsonPreview = message.json ? JSON.stringify(message.json, null, 2) : "";
+      return `
+        <article class="mqtt-message-card">
+          <header>
+            <div>
+              <strong>${escapeHtml(message.topic || "-")}</strong>
+              <span>${escapeHtml(message.receivedAt || "")} · ${escapeHtml(message.source || "mqtt")} · ${escapeHtml(message.robotId || "-")} · ${escapeHtml(message.messageType || "-")}</span>
+            </div>
+            <small>#${escapeHtml(String(message.id || ""))}</small>
+          </header>
+          <pre>${escapeHtml(jsonPreview || message.payload || "")}</pre>
+        </article>
+      `;
+    })
+    .join("");
+
 }
 
 function render() {
@@ -2128,4 +2220,37 @@ async function updateUserRole(email, role, status) {
     users.push(payload.user);
   }
   renderUsersView();
+}
+
+async function refreshMqttMonitor() {
+  const topic = document.getElementById("mqttTopicInput")?.value.trim() || "";
+  const q = document.getElementById("mqttSearchInput")?.value.trim() || "";
+  const params = new URLSearchParams({ limit: "100" });
+  if (topic) params.set("topic", topic);
+  if (q) params.set("q", q);
+  const [statusPayload, messagesPayload] = await Promise.all([
+    request("/api/mqtt/status"),
+    request(`/api/mqtt/messages?${params.toString()}`),
+  ]);
+  mqttStatus = statusPayload;
+  mqttMessages = messagesPayload.messages || [];
+  renderMqttMonitorView();
+}
+
+async function recordMqttSample() {
+  const payload = await request("/api/mqtt/messages", {
+    method: "POST",
+    body: JSON.stringify({
+      topic: "HeartBeat",
+      payload: JSON.stringify({
+        robotId: "LOCAL-SAMPLE",
+        power: 88,
+        productModel: "NBMower",
+        source: "platform-admin-sample",
+      }),
+      source: "manual",
+    }),
+  });
+  mqttMessages = [payload.message, ...mqttMessages].slice(0, 100);
+  renderMqttMonitorView();
 }

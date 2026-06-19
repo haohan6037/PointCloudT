@@ -1,0 +1,15 @@
+.env
+.env.*
+__pycache__/
+.pytest_cache/
+.venv/
+*.pyc
+node_modules/
+.expo/
+mobile/ios/Pods/
+dist/
+build/
+coverage/
+.DS_Store
+mqtt/data/
+mqtt/log/

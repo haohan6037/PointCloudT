@@ -149,6 +149,13 @@ class UserRoleUpdatePayload(BaseModel):
     status: str = "active"
 
 
+class MqttMessagePayload(BaseModel):
+    """Manual MQTT message record / 手工记录 MQTT 消息"""
+    topic: str = Field(min_length=1)
+    payload: str = Field(min_length=1)
+    source: str = "manual"
+
+
 @dataclass
 class StoreStatus:
     """Data store status / 数据存储状态"""

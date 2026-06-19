@@ -1,0 +1,1789 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Cache-Control" content="no-store" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>MyGardenOS BLE MQTT Config</title>
+  <style>
+    :root {
+      --bg: #f5faf6;
+      --card: #ffffff;
+      --text: #153526;
+      --muted: #718276;
+      --green: #0f6a45;
+      --line: #d3e4d8;
+      --danger: #b42318;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      padding: 28px;
+    }
+    main {
+      width: min(100%, 2200px);
+      margin: 0 auto;
+    }
+    h1 {
+      font-size: 34px;
+      margin: 0 0 8px;
+    }
+    p {
+      color: var(--muted);
+      font-size: 16px;
+      line-height: 1.55;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 22px;
+      box-shadow: 0 8px 24px rgba(15, 106, 69, .08);
+    }
+    .dashboard {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 18px;
+      margin-top: 18px;
+      align-items: start;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+    }
+    label {
+      display: block;
+      font-size: 13px;
+      color: var(--muted);
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+    input,
+    textarea,
+    select {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px 13px;
+      color: var(--text);
+      font-size: 16px;
+      background: #fbfefc;
+      font-family: inherit;
+    }
+    textarea {
+      min-height: 180px;
+      resize: vertical;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    .tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 18px;
+      border-bottom: 1px solid var(--line);
+    }
+    .tab {
+      border-radius: 10px 10px 0 0;
+      background: transparent;
+      color: var(--green);
+      border: 1px solid transparent;
+      border-bottom: 0;
+      padding: 11px 14px;
+    }
+    .tab.active {
+      background: var(--card);
+      border-color: var(--line);
+      box-shadow: 0 -2px 12px rgba(15, 106, 69, .06);
+    }
+    .tab-panel {
+      display: none;
+    }
+    .tab-panel.active {
+      display: block;
+    }
+    button {
+      border: 0;
+      border-radius: 10px;
+      padding: 13px 16px;
+      background: var(--green);
+      color: #fff;
+      font-size: 16px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+    button.secondary {
+      background: #eaf5ee;
+      color: var(--green);
+      border: 1px solid var(--line);
+    }
+    button:disabled {
+      opacity: .55;
+      cursor: not-allowed;
+    }
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 16px;
+    }
+    pre {
+      white-space: pre-wrap;
+      word-break: break-word;
+      background: #0e2118;
+      color: #dff8e8;
+      border-radius: 10px;
+      padding: 14px;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+    .status {
+      font-weight: 800;
+      color: var(--green);
+    }
+    .error {
+      color: var(--danger);
+      font-weight: 700;
+    }
+    .log {
+      min-height: 420px;
+      max-height: 720px;
+      overflow: auto;
+    }
+    .diagnostics {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 14px;
+    }
+    .diagnostics button {
+      min-height: 50px;
+    }
+    .summary {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 12px;
+    }
+    .summary div {
+      border: 1px solid var(--line);
+      background: #f8fcf9;
+      border-radius: 8px;
+      padding: 10px;
+    }
+    .summary b {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      margin-bottom: 4px;
+    }
+    .messages {
+      display: grid;
+      gap: 10px;
+      margin-top: 14px;
+      max-height: 720px;
+      overflow: auto;
+    }
+    .message {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 12px;
+      background: #fbfefc;
+    }
+    .message-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      color: var(--green);
+      font-weight: 800;
+      margin-bottom: 8px;
+    }
+    .message-time {
+      color: var(--muted);
+      font-weight: 500;
+      white-space: nowrap;
+    }
+    .wide {
+      grid-column: 1 / -1;
+    }
+    .hint {
+      font-size: 13px;
+      margin: 8px 0 0;
+    }
+    .notice {
+      border: 1px solid #e6d6a8;
+      background: #fff9e8;
+      border-radius: 8px;
+      padding: 12px 14px;
+      color: #4d3a00;
+      margin: 12px 0 16px;
+    }
+    .notice b {
+      display: block;
+      margin-bottom: 4px;
+    }
+    .remote-pad {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(72px, 1fr));
+      gap: 8px;
+      max-width: 380px;
+      margin-top: 12px;
+    }
+    .remote-pad button {
+      min-height: 56px;
+      touch-action: none;
+    }
+    .map-preview {
+      width: 100%;
+      height: 280px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfefc;
+      margin-top: 12px;
+    }
+    @media (max-width: 640px) {
+      body { padding: 18px; }
+      .dashboard { grid-template-columns: 1fr; }
+      .grid { grid-template-columns: 1fr; }
+      .summary { grid-template-columns: 1fr; }
+    }
+    @media (min-width: 641px) and (max-width: 980px) {
+      .dashboard { grid-template-columns: 1fr; }
+      .summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>BLE MQTT Config <span style="font-size: 14px; color: var(--muted);">v-map-20260522-01</span></h1>
+    <p>
+      Use Chrome or Edge on a Mac/Windows/Android device with Bluetooth. iPhone Safari/Chrome and iOS Simulator cannot use Web Bluetooth.
+    </p>
+
+    <nav class="tabs" aria-label="Tool tabs">
+      <button class="tab active" type="button" data-tab="ble-config">BLE Config</button>
+      <button class="tab" type="button" data-tab="diagnostics">Diagnostics</button>
+      <button class="tab" type="button" data-tab="mqtt-monitor">MQTT Monitor</button>
+      <button class="tab" type="button" data-tab="map-transfer">Map Test</button>
+      <button class="tab" type="button" data-tab="ble-log">BLE Log</button>
+    </nav>
+
+    <div class="dashboard">
+      <section class="card tab-panel active" data-panel="ble-config">
+        <h2>BLE MQTT Config</h2>
+        <div class="grid">
+          <div>
+            <label>MQTT host</label>
+            <input id="host" value="nozomi.proxy.rlwy.net" />
+          </div>
+          <div>
+            <label>MQTT port</label>
+            <input id="port" value="53239" inputmode="numeric" />
+          </div>
+          <div>
+            <label>Username</label>
+            <input id="username" value="admin" />
+          </div>
+          <div>
+            <label>Password</label>
+            <input id="password" value="admin" />
+          </div>
+        </div>
+        <p>Generated command:</p>
+        <pre id="command"></pre>
+        <div class="actions">
+          <button id="connect">Connect NBMower</button>
+          <button id="read" class="secondary" disabled>Read $AT,0</button>
+          <button id="write" disabled>Write MQTT Config</button>
+          <button id="writeEscaped" class="secondary" disabled>Write Escaped Literal</button>
+          <button id="disconnect" class="secondary" disabled>Disconnect</button>
+        </div>
+        <p>Status: <span id="status" class="status">Not connected</span></p>
+        <p id="support" class="error"></p>
+      </section>
+
+      <section class="card tab-panel" data-panel="diagnostics">
+        <h2>Robot Diagnostics</h2>
+        <p>Use these after MQTT config is saved. They help confirm the robot system, status, 4G switch, and working mode.</p>
+        <div class="diagnostics">
+          <button id="system" class="secondary" disabled>Read $SYSTEM</button>
+          <button id="robotStatus" class="secondary" disabled>Read $STATUS</button>
+          <button id="readConfig" class="secondary" disabled>Read $CONFIG,0</button>
+          <button id="enable4g" class="secondary" disabled>Enable 4G</button>
+          <button id="selfCheck" class="secondary" disabled>Self-check</button>
+          <button id="standby" class="secondary" disabled>Standby</button>
+          <button id="remote" class="secondary" disabled>Remote Mode</button>
+        </div>
+        <div id="summary" class="summary"></div>
+      </section>
+
+      <section class="card tab-panel" data-panel="mqtt-monitor">
+        <h2>Backend MQTT Monitor</h2>
+        <p>This reads public MQTT broker logs and robot messages. Log in only when you need to send RobotCommand.</p>
+        <div class="grid">
+          <div>
+            <label>Backend API</label>
+            <input id="apiBase" value="https://mygardenos-mobile-backend-production.up.railway.app" />
+          </div>
+          <div>
+            <label>Status</label>
+            <input id="monitorStatus" value="Not logged in" readonly />
+          </div>
+          <div>
+            <label>Email</label>
+            <input id="apiEmail" placeholder="you@example.com" />
+          </div>
+          <div>
+            <label>Password</label>
+            <input id="apiPassword" type="password" />
+          </div>
+          <div>
+            <label>Robot ID</label>
+            <input id="commandRobotId" value="CD145B0AE7C1" />
+          </div>
+          <div>
+            <label>Cloud command</label>
+            <input id="cloudCommand" value="$SYSTEM" />
+          </div>
+        </div>
+        <div class="actions">
+          <button id="apiLogin">Log In</button>
+          <button id="loadMessages" class="secondary">Refresh Messages</button>
+          <button id="toggleAuto" class="secondary">Start Auto Refresh</button>
+          <button id="clearMessages" class="secondary">Clear Messages</button>
+          <button id="sendCloudCommand" class="secondary" disabled>Send RobotCommand</button>
+        </div>
+        <div id="backendSummary" class="summary"></div>
+        <div id="messages" class="messages"></div>
+      </section>
+
+      <section class="card tab-panel" data-panel="map-transfer">
+        <h2>Map Test</h2>
+        <p>Clone a known-good map command sequence, then send it back over BLE or MQTT with a new map ID.</p>
+        <div class="notice">
+          <b>Current protocol gap</b>
+          The robot reports the active map ID through $STATUS/$TASK, but the provided protocol does not define a confirmed command for reading the full $MAP payload back from the robot. To clone a native-app map, paste $MAP writes captured from the native app or vendor/cloud logs.
+        </div>
+        <div class="grid">
+          <div>
+            <label>Send via</label>
+            <select id="mapTransport">
+              <option value="ble">BLE connected robot</option>
+              <option value="cloud">MQTT RobotCommand</option>
+            </select>
+          </div>
+          <div>
+            <label>Delay between commands (ms)</label>
+            <input id="mapCommandDelay" value="900" inputmode="numeric" />
+          </div>
+          <div>
+            <label>Map ID</label>
+            <input id="mapId" value="90191082715388544" />
+          </div>
+          <div>
+            <label>New cloned Map ID</label>
+            <input id="newMapId" />
+          </div>
+          <div>
+            <label>Dock X,Y,Yaw</label>
+            <input id="dockPose" value="2,1,45.3" />
+          </div>
+          <div>
+            <label>Recorder sample distance (m)</label>
+            <input id="recordMinDistance" value="0.10" inputmode="decimal" />
+          </div>
+          <div>
+            <label>Generated area ID</label>
+            <input id="manualAreaId" value="1" inputmode="numeric" />
+          </div>
+          <div>
+            <label>Points per MAP packet</label>
+            <input id="mapPacketPointCount" value="5" inputmode="numeric" />
+          </div>
+          <div>
+            <label>MAP CRC mode</label>
+            <select id="mapCrcMode">
+              <option value="usb">CRC-16/USB</option>
+              <option value="modbus">CRC-16/MODBUS</option>
+              <option value="xmodem">CRC-16/XMODEM</option>
+              <option value="xmodem-zero">XMODEM + trailing 00 00</option>
+              <option value="ccitt-false">CRC-16/CCITT-FALSE</option>
+            </select>
+          </div>
+          <div>
+            <label>Leave dock distance (m)</label>
+            <input id="leaveDockDistance" value="1.00" inputmode="decimal" />
+          </div>
+          <div class="wide">
+            <label>Manual mapping recorder</label>
+            <div class="actions">
+              <button id="captureDockPose" class="secondary">Use Current Pose as Dock</button>
+              <button id="addOneMeterStart" class="secondary">Add 1m Start Point</button>
+              <button id="driveOutOneMeter" class="secondary" disabled>Drive Out 1m</button>
+              <button id="enterRemoteForMap" class="secondary" disabled>Enter Remote Mode</button>
+              <button id="startRecordingMap" class="secondary" disabled>Start Recording</button>
+              <button id="stopRecordingMap" class="secondary">Stop Recording</button>
+              <button id="clearRecordedMap" class="secondary">Clear Points</button>
+              <button id="generateManualMap" class="secondary">Generate Map From Points</button>
+            </div>
+            <div class="remote-pad">
+              <button class="secondary" data-control="5" disabled>Forward Left</button>
+              <button class="secondary" data-control="1" disabled>Forward</button>
+              <button class="secondary" data-control="6" disabled>Forward Right</button>
+              <button class="secondary" data-control="3" disabled>Left</button>
+              <button class="secondary" data-control="0" disabled>Stop</button>
+              <button class="secondary" data-control="4" disabled>Right</button>
+              <button class="secondary" data-control="7" disabled>Back Left</button>
+              <button class="secondary" data-control="2" disabled>Back</button>
+              <button class="secondary" data-control="8" disabled>Back Right</button>
+            </div>
+            <canvas id="manualMapCanvas" class="map-preview" width="900" height="360"></canvas>
+            <p class="hint">While recording, every BLE heartbeat point is sampled into a boundary path. Release any movement button to send $CONTROL,0 stop.</p>
+          </div>
+          <div class="wide">
+            <label>Captured / pasted working map commands</label>
+            <textarea id="capturedMapCommands"></textarea>
+            <p class="hint">Paste the complete working $MAP/$ACTION sequence here if it comes from app logs. BLE/MQTT responses that contain $MAP are also captured here automatically.</p>
+          </div>
+          <div class="wide">
+            <label>Generated command sequence to send</label>
+            <textarea id="mapCommands"></textarea>
+            <p class="hint">One command per line. Use raw commands like $STATUS or JSON lines like {"command":"$STATUS"}.</p>
+          </div>
+        </div>
+        <div class="actions">
+          <button id="readCurrentMapBle" class="secondary" disabled>Read Map ID via BLE</button>
+          <button id="readCurrentMapCloud" class="secondary" disabled>Read Map ID via MQTT</button>
+          <button id="probeMapReadBle" class="secondary" disabled>Try Undocumented $MAP Reads</button>
+          <button id="clearCapturedMap" class="secondary">Clear Captured</button>
+          <button id="cloneCapturedMap" class="secondary">Clone Captured Map</button>
+          <button id="loadSampleMap" class="secondary">Load Test Map</button>
+          <button id="testMapHeader" class="secondary" disabled>Test Map Header Only</button>
+          <button id="testAllMapHeaders" class="secondary" disabled>Test All Header CRC Modes</button>
+          <button id="sendMapCommands" disabled>Send Map Sequence</button>
+        </div>
+        <div id="mapSummary" class="summary"></div>
+      </section>
+
+      <section class="card tab-panel" data-panel="ble-log">
+        <h2>BLE Channel</h2>
+        <p>Scan name: <b>NBMower</b> · Service: <b>fff0</b> · Read/notify: <b>fff1</b> · Write: <b>fff2</b></p>
+        <pre id="log" class="log"></pre>
+      </section>
+    </div>
+  </main>
+
+  <script>
+    const SERVICE_UUID = '0000fff0-0000-1000-8000-00805f9b34fb';
+    const READ_UUID = '0000fff1-0000-1000-8000-00805f9b34fb';
+    const WRITE_UUID = '0000fff2-0000-1000-8000-00805f9b34fb';
+    const SAMPLE_MAP_COMMANDS = [
+      '$MAP,0,0,0,0,90191082715388544,2,1,45.3,1,1,1,1,1,1,1,1,1,1,62785',
+      '$ACTION,5,0',
+      '$MAP,1,1,0,5,0.25,1.66,0.93,1.96,1.08,1.10,0.45,1.07,0.25,1.66,51642',
+      '$MAP,1,2,0,10,0.57,1.80,0.57,1.08,0.41,1.08,0.41,1.19,0.41,1.66,0.25,1.66,0.73,1.87,0.73,1.08,0.89,1.08,0.89,1.27,62277',
+      '$MAP,1,2,1,6,1.05,1.27,1.05,1.10,0.45,1.07,0.25,1.66,0.93,1.96,1.08,1.10,36896',
+      '$MAP,1,3,0,2,0.44,1.90,0.57,1.80,35976',
+      '$ACTION,5,1',
+    ].join('\n');
+
+    const tabButtons = [...document.querySelectorAll('[data-tab]')];
+    const tabPanels = [...document.querySelectorAll('[data-panel]')];
+    const host = document.querySelector('#host');
+    const port = document.querySelector('#port');
+    const username = document.querySelector('#username');
+    const password = document.querySelector('#password');
+    const command = document.querySelector('#command');
+    const log = document.querySelector('#log');
+    const statusText = document.querySelector('#status');
+    const support = document.querySelector('#support');
+    const connectButton = document.querySelector('#connect');
+    const readButton = document.querySelector('#read');
+    const writeButton = document.querySelector('#write');
+    const writeEscapedButton = document.querySelector('#writeEscaped');
+    const disconnectButton = document.querySelector('#disconnect');
+    const diagnosticButtons = [
+      document.querySelector('#system'),
+      document.querySelector('#robotStatus'),
+      document.querySelector('#readConfig'),
+      document.querySelector('#enable4g'),
+      document.querySelector('#selfCheck'),
+      document.querySelector('#standby'),
+      document.querySelector('#remote'),
+    ];
+    const summary = document.querySelector('#summary');
+    const apiBase = document.querySelector('#apiBase');
+    const apiEmail = document.querySelector('#apiEmail');
+    const apiPassword = document.querySelector('#apiPassword');
+    const commandRobotId = document.querySelector('#commandRobotId');
+    const cloudCommand = document.querySelector('#cloudCommand');
+    const apiLogin = document.querySelector('#apiLogin');
+    const loadMessages = document.querySelector('#loadMessages');
+    const toggleAuto = document.querySelector('#toggleAuto');
+    const clearMessagesButton = document.querySelector('#clearMessages');
+    const sendCloudCommandButton = document.querySelector('#sendCloudCommand');
+    const monitorStatus = document.querySelector('#monitorStatus');
+    const backendSummary = document.querySelector('#backendSummary');
+    const messages = document.querySelector('#messages');
+    const mapTransport = document.querySelector('#mapTransport');
+    const mapCommandDelay = document.querySelector('#mapCommandDelay');
+    const mapId = document.querySelector('#mapId');
+    const newMapId = document.querySelector('#newMapId');
+    const dockPose = document.querySelector('#dockPose');
+    const recordMinDistance = document.querySelector('#recordMinDistance');
+    const manualAreaId = document.querySelector('#manualAreaId');
+    const mapPacketPointCount = document.querySelector('#mapPacketPointCount');
+    const mapCrcMode = document.querySelector('#mapCrcMode');
+    const leaveDockDistance = document.querySelector('#leaveDockDistance');
+    const captureDockPose = document.querySelector('#captureDockPose');
+    const addOneMeterStart = document.querySelector('#addOneMeterStart');
+    const driveOutOneMeter = document.querySelector('#driveOutOneMeter');
+    const enterRemoteForMap = document.querySelector('#enterRemoteForMap');
+    const startRecordingMap = document.querySelector('#startRecordingMap');
+    const stopRecordingMap = document.querySelector('#stopRecordingMap');
+    const clearRecordedMap = document.querySelector('#clearRecordedMap');
+    const generateManualMap = document.querySelector('#generateManualMap');
+    const manualMapCanvas = document.querySelector('#manualMapCanvas');
+    const controlButtons = [...document.querySelectorAll('[data-control]')];
+    const capturedMapCommands = document.querySelector('#capturedMapCommands');
+    const mapCommands = document.querySelector('#mapCommands');
+    const readCurrentMapBle = document.querySelector('#readCurrentMapBle');
+    const readCurrentMapCloud = document.querySelector('#readCurrentMapCloud');
+    const probeMapReadBle = document.querySelector('#probeMapReadBle');
+    const clearCapturedMap = document.querySelector('#clearCapturedMap');
+    const cloneCapturedMap = document.querySelector('#cloneCapturedMap');
+    const loadSampleMap = document.querySelector('#loadSampleMap');
+    const testMapHeader = document.querySelector('#testMapHeader');
+    const testAllMapHeaders = document.querySelector('#testAllMapHeaders');
+    const sendMapCommands = document.querySelector('#sendMapCommands');
+    const mapSummary = document.querySelector('#mapSummary');
+    let apiToken = localStorage.getItem('mygardenos_api_token') || '';
+    let refreshTimer;
+
+    let device;
+    let server;
+    let writeCharacteristic;
+    let readCharacteristic;
+    let recordingMap = false;
+    let recordedPoints = [];
+    let mappingStartPoint;
+    let latestHeartbeat;
+    let activeControl;
+    let controlRepeatTimer;
+    let pendingRobotAck;
+
+    function currentCommand() {
+      return `{"command":"$AT,1,10,${host.value.trim()},${port.value.trim()},${username.value.trim()},${password.value.trim()}"}\r\n`;
+    }
+
+    function currentEscapedLiteralCommand() {
+      return `{\\"command\\":\\"$AT,1,10,${host.value.trim()},${port.value.trim()},${username.value.trim()},${password.value.trim()}\\"}\\r\\n`;
+    }
+
+    function updateCommand() {
+      command.textContent = [
+        `Normal: ${currentCommand().replace(/\r/g, '\\r').replace(/\n/g, '\\n')}`,
+        `Escaped literal test: ${currentEscapedLiteralCommand()}`,
+      ].join('\n');
+    }
+
+    function switchTab(name) {
+      tabButtons.forEach((button) => button.classList.toggle('active', button.dataset.tab === name));
+      tabPanels.forEach((panel) => panel.classList.toggle('active', panel.dataset.panel === name));
+    }
+
+    function appendLog(message) {
+      const time = new Date().toLocaleTimeString();
+      log.textContent = `[${time}] ${message}\n` + log.textContent;
+    }
+
+    function setConnected(connected) {
+      readButton.disabled = !connected;
+      writeButton.disabled = !connected;
+      writeEscapedButton.disabled = !connected;
+      disconnectButton.disabled = !connected;
+      diagnosticButtons.forEach((button) => button.disabled = !connected);
+      readCurrentMapBle.disabled = !connected;
+      probeMapReadBle.disabled = !connected;
+      testMapHeader.disabled = !connected;
+      testAllMapHeaders.disabled = !connected;
+      driveOutOneMeter.disabled = !connected;
+      enterRemoteForMap.disabled = !connected;
+      startRecordingMap.disabled = !connected;
+      controlButtons.forEach((button) => button.disabled = !connected);
+      updateMapButtons();
+      connectButton.disabled = connected;
+      statusText.textContent = connected ? `Connected to ${device?.name || 'device'}` : 'Not connected';
+    }
+
+    async function writeText(value, label = 'TX', options = {}) {
+      const bytes = new TextEncoder().encode(value);
+      const chunkSize = Number.parseInt(options.chunkSize, 10) || 0;
+      if (chunkSize > 0 && bytes.length > chunkSize) {
+        for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+          const chunk = bytes.slice(offset, offset + chunkSize);
+          if (options.withResponse && writeCharacteristic.writeValue) {
+            await writeCharacteristic.writeValue(chunk);
+          } else if (writeCharacteristic.writeValueWithoutResponse) {
+            await writeCharacteristic.writeValueWithoutResponse(chunk);
+          } else {
+            await writeCharacteristic.writeValue(chunk);
+          }
+          if (options.chunkDelayMs) await sleep(options.chunkDelayMs);
+        }
+        appendLog(`${label} chunked ${bytes.length} bytes / ${chunkSize}`);
+      } else if (options.withResponse && writeCharacteristic.writeValue) {
+        await writeCharacteristic.writeValue(bytes);
+        appendLog(`${label} ${value.replace(/\r/g, '\\r').replace(/\n/g, '\\n')}`);
+      } else if (writeCharacteristic.writeValueWithoutResponse) {
+        await writeCharacteristic.writeValueWithoutResponse(bytes);
+        appendLog(`${label} ${value.replace(/\r/g, '\\r').replace(/\n/g, '\\n')}`);
+      } else {
+        await writeCharacteristic.writeValue(bytes);
+        appendLog(`${label} ${value.replace(/\r/g, '\\r').replace(/\n/g, '\\n')}`);
+      }
+    }
+
+    function parseRobotResponse(text) {
+      const clean = text.trim();
+      if (!clean.startsWith('{')) return;
+      try {
+        const response = JSON.parse(clean);
+        resolvePendingRobotAck(response);
+        if (response.command === '$STATUS' && response.code === '00') {
+          renderStatusSummary(response.data || '');
+          renderMapStatusSummary(response.data || '');
+        }
+        if (response.command === '$SYSTEM' && response.code === '00') {
+          renderSystemSummary(response.data || '');
+        }
+        if (response.command === '$CONFIG,0' && response.code === '00') {
+          renderConfigSummary(response.data || '');
+        }
+        if ((response.command === '$HEARTBEAT' || response.command === '$HEARTBE') && response.code === '00') {
+          renderBleHeartbeatSummary(response.data || '');
+          handleMappingHeartbeat(response.data || '');
+        }
+        if (response.command?.startsWith('$TASK,0') && response.code === '00') {
+          renderTaskSummary(response.command, response.data || '');
+        }
+        if (response.command?.startsWith('$MAP,')) {
+          captureMapCommand(response.command);
+        }
+      } catch {
+        // Keep raw log only.
+      }
+    }
+
+    function robotAckKey(commandValue) {
+      if (!commandValue) return '';
+      if (commandValue.startsWith('$MAP,')) return commandValue.split(',').slice(0, 4).join(',');
+      return commandValue;
+    }
+
+    function resolvePendingRobotAck(response) {
+      if (!pendingRobotAck) return;
+      if (robotAckKey(response.command || '') !== pendingRobotAck.key) return;
+      const pending = pendingRobotAck;
+      pendingRobotAck = undefined;
+      clearTimeout(pending.timer);
+      pending.resolve(response);
+    }
+
+    function renderSummary(items) {
+      summary.innerHTML = items.map(([label, value]) => `<div><b>${label}</b>${value || '-'}</div>`).join('');
+    }
+
+    function renderSystemSummary(data) {
+      const parts = data.split(',');
+      renderSummary([
+        ['Software', parts[0]],
+        ['App sync', parts[1]],
+        ['Model', parts[2]],
+        ['ESIM ICCID', parts[3]],
+        ['Robot ID', parts[4]],
+        ['BLE version', parts[5]],
+        ['4G version', parts[6]],
+        ['RTK version', parts[7]],
+      ]);
+    }
+
+    function renderStatusSummary(data) {
+      const parts = data.split(',');
+      const systemMap = { '0': 'Self-check', '1': 'Running', '2': 'Deep sleep/off', '3': 'Light sleep' };
+      const modeMap = {
+        '0': 'Idle',
+        '1': 'Remote',
+        '2': 'Go mapping start',
+        '3': 'Border',
+        '4': 'Go charge path start',
+        '5': 'Go work path start',
+        '6': 'Working path',
+        '7': 'Docking',
+      };
+      renderSummary([
+        ['System', systemMap[parts[0]] || parts[0]],
+        ['Self-check complete', parts[1] === '1' ? 'Yes' : 'No'],
+        ['Alarm', parts[2]],
+        ['Unlocked', parts[3] === '1' ? 'Yes' : 'No'],
+        ['Mode', modeMap[parts[4]] || parts[4]],
+        ['Paused', parts[5] === '1' ? 'No' : 'Yes'],
+        ['On dock', parts[6] === '1' ? 'Yes' : 'No'],
+        ['Battery', parts[9] ? `${parts[9]}%` : '-'],
+        ['Temperature', parts[10] ? `${parts[10]} C` : '-'],
+        ['Task ID', parts[11]],
+      ]);
+    }
+
+    function renderConfigSummary(data) {
+      const parts = data.split(',');
+      renderSummary([
+        ['Remote speed', parts[0]],
+        ['Remote angular speed', parts[1]],
+        ['Remote blade speed', parts[2]],
+        ['Remote blade height', parts[3]],
+        ['Navigation speed', parts[4]],
+        ['Low work power', parts[9] ? `${parts[9]}%` : '-'],
+        ['Screen lock', parts[11]],
+        ['Light sleep', parts[12]],
+        ['Raindrop', parts[13] === '1' ? 'On' : 'Off'],
+        ['Ultrasonic', parts[14] === '1' ? 'On' : 'Off'],
+        ['Buzzer', parts[15] === '1' ? 'On' : 'Off'],
+        ['4G', parts[16] === '1' ? 'On' : 'Off'],
+        ['Raw', data],
+      ]);
+    }
+
+
+    function renderBleHeartbeatSummary(data) {
+      const parts = data.split(',');
+      renderSummary([
+        ['BLE heartbeat', 'Active'],
+        ['X', parts[0]],
+        ['Y', parts[1]],
+        ['Yaw', parts[2]],
+        ['Area', parts[3]],
+        ['Point', parts[4]],
+        ['Finish', parts[5]],
+        ['Invert', parts[6] === '1' ? 'Yes' : parts[6] === '0' ? 'No' : parts[6]],
+        ['Run time', parts[7]],
+        ['Remote state', parts[10] || parts[8]],
+        ['Raw', data],
+      ]);
+    }
+
+    function renderMapStatusSummary(data) {
+      const parts = data.split(',');
+      const items = [
+        ['Current map ID', parts[7]],
+        ['Mode', parts[4]],
+        ['Task ID', parts[11]],
+        ['Battery', parts[9] ? `${parts[9]}%` : '-'],
+      ];
+      mapSummary.innerHTML = items.map(([label, value]) => `<div><b>${label}</b>${escapeHtml(value || '-')}</div>`).join('');
+      if (parts[7]) mapId.value = parts[7];
+    }
+
+    function renderTaskSummary(commandValue, data) {
+      const parts = data.split(',');
+      const items = [
+        ['Task query', commandValue],
+        ['Task ID', parts[0]],
+        ['Map ID', parts[1]],
+        ['Area count', parts[2]],
+        ['Raw', data],
+      ];
+      mapSummary.innerHTML = items.map(([label, value]) => `<div><b>${label}</b>${escapeHtml(value || '-')}</div>`).join('');
+      if (parts[1]) mapId.value = parts[1];
+    }
+
+    async function sendCommand(commandValue, label = commandValue, options = {}) {
+      await writeText(`{"command":"${commandValue}"}\r\n`, label, options);
+    }
+
+    async function sendCommandAndWait(commandValue, label = commandValue, options = {}) {
+      const key = robotAckKey(commandValue);
+      if (pendingRobotAck) {
+        clearTimeout(pendingRobotAck.timer);
+        pendingRobotAck.reject(new Error('Superseded by another command'));
+        pendingRobotAck = undefined;
+      }
+      const waitForAck = new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+          if (pendingRobotAck?.key === key) pendingRobotAck = undefined;
+          reject(new Error(`Timed out waiting for ${key}`));
+        }, options.timeoutMs || 5000);
+        pendingRobotAck = { key, resolve, reject, timer };
+      });
+      await sendCommand(commandValue, label, options);
+      return waitForAck;
+    }
+
+    function handleMappingHeartbeat(data) {
+      const parts = data.split(',');
+      const point = {
+        x: Number.parseFloat(parts[0]),
+        y: Number.parseFloat(parts[1]),
+        yaw: Number.parseFloat(parts[2]),
+        raw: data,
+      };
+      if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) return;
+      latestHeartbeat = point;
+      if (recordingMap) addRecordedPoint(point);
+      renderManualMapSummary();
+    }
+
+    function distanceBetween(a, b) {
+      return Math.hypot(a.x - b.x, a.y - b.y);
+    }
+
+    function addRecordedPoint(point) {
+      const minDistance = Math.max(0, Number.parseFloat(recordMinDistance.value) || 0);
+      const last = recordedPoints[recordedPoints.length - 1];
+      if (last && distanceBetween(last, point) < minDistance) return;
+      recordedPoints.push({ x: point.x, y: point.y, yaw: point.yaw });
+      persistRecordedPoints();
+      drawManualMap();
+    }
+
+    function persistRecordedPoints() {
+      localStorage.setItem('mygardenos_recorded_map_points', JSON.stringify(recordedPoints));
+    }
+
+    function restoreRecordedPoints() {
+      try {
+        const saved = JSON.parse(localStorage.getItem('mygardenos_recorded_map_points') || '[]');
+        if (Array.isArray(saved)) recordedPoints = saved.filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y));
+      } catch {
+        recordedPoints = [];
+      }
+      try {
+        const savedStart = JSON.parse(localStorage.getItem('mygardenos_mapping_start_point') || 'null');
+        if (savedStart && Number.isFinite(savedStart.x) && Number.isFinite(savedStart.y)) mappingStartPoint = savedStart;
+      } catch {
+        mappingStartPoint = undefined;
+      }
+      drawManualMap();
+    }
+
+    function renderManualMapSummary() {
+      const heartbeatText = latestHeartbeat
+        ? `${latestHeartbeat.x.toFixed(2)}, ${latestHeartbeat.y.toFixed(2)}, ${Number.isFinite(latestHeartbeat.yaw) ? latestHeartbeat.yaw.toFixed(1) : '-'}`
+        : '-';
+      const existing = mapSummary.innerHTML;
+      if (!recordingMap && !recordedPoints.length) return;
+      mapSummary.innerHTML = [
+        ['Recording', recordingMap ? 'Yes' : 'No'],
+        ['Points', String(recordedPoints.length)],
+        ['Latest heartbeat', heartbeatText],
+        ['Start point', mappingStartPoint ? `${mappingStartPoint.x.toFixed(2)}, ${mappingStartPoint.y.toFixed(2)}` : '-'],
+        ['Area ID', manualAreaId.value.trim() || '1'],
+      ].map(([label, value]) => `<div><b>${label}</b>${escapeHtml(value)}</div>`).join('') || existing;
+    }
+
+    function drawManualMap() {
+      const canvas = manualMapCanvas;
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = '#fbfefc';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.strokeStyle = '#d3e4d8';
+      ctx.lineWidth = 1;
+      for (let x = 0; x <= canvas.width; x += 60) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, canvas.height);
+        ctx.stroke();
+      }
+      for (let y = 0; y <= canvas.height; y += 60) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(canvas.width, y);
+        ctx.stroke();
+      }
+      const dock = parseDockPose();
+      const referencePoints = [
+        ...recordedPoints,
+        ...(dock ? [dock] : []),
+        ...(mappingStartPoint ? [mappingStartPoint] : []),
+      ];
+      if (!referencePoints.length) {
+        ctx.fillStyle = '#718276';
+        ctx.font = '16px -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif';
+        ctx.fillText('No recorded points yet', 24, 34);
+        return;
+      }
+      const xs = referencePoints.map((point) => point.x);
+      const ys = referencePoints.map((point) => point.y);
+      const minX = Math.min(...xs);
+      const maxX = Math.max(...xs);
+      const minY = Math.min(...ys);
+      const maxY = Math.max(...ys);
+      const padding = 28;
+      const scale = Math.min(
+        (canvas.width - padding * 2) / Math.max(0.5, maxX - minX),
+        (canvas.height - padding * 2) / Math.max(0.5, maxY - minY),
+      );
+      const toCanvas = (point) => ({
+        x: padding + (point.x - minX) * scale,
+        y: canvas.height - padding - (point.y - minY) * scale,
+      });
+      if (dock && mappingStartPoint) {
+        const dockCanvas = toCanvas(dock);
+        const startCanvas = toCanvas(mappingStartPoint);
+        ctx.strokeStyle = '#94a3b8';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([8, 8]);
+        ctx.beginPath();
+        ctx.moveTo(dockCanvas.x, dockCanvas.y);
+        ctx.lineTo(startCanvas.x, startCanvas.y);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+      if (recordedPoints.length) {
+        ctx.strokeStyle = '#0f6a45';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        recordedPoints.forEach((point, index) => {
+          const p = toCanvas(point);
+          if (index === 0) ctx.moveTo(p.x, p.y);
+          else ctx.lineTo(p.x, p.y);
+        });
+        ctx.stroke();
+        recordedPoints.forEach((point, index) => {
+          const p = toCanvas(point);
+          ctx.fillStyle = index === 0 ? '#1d4ed8' : index === recordedPoints.length - 1 ? '#b42318' : '#0f6a45';
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, index === 0 || index === recordedPoints.length - 1 ? 6 : 3, 0, Math.PI * 2);
+          ctx.fill();
+        });
+      }
+      if (dock) {
+        const p = toCanvas(dock);
+        ctx.fillStyle = '#2563eb';
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 7, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      if (mappingStartPoint) {
+        const p = toCanvas(mappingStartPoint);
+        ctx.fillStyle = '#f97316';
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 7, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    function mapPointValue(value) {
+      return Number.parseFloat(value).toFixed(2).replace(/\.?0+$/, (match) => match === '.00' ? '' : match);
+    }
+
+    function poseAhead(point, distance) {
+      const radians = (Number.isFinite(point.yaw) ? point.yaw : 0) * Math.PI / 180;
+      return {
+        x: point.x + Math.cos(radians) * distance,
+        y: point.y + Math.sin(radians) * distance,
+        yaw: point.yaw,
+      };
+    }
+
+    function parseDockPose() {
+      const [x, y, yaw] = dockPose.value.split(',').map((part) => Number.parseFloat(part.trim()));
+      if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+      return { x, y, yaw: Number.isFinite(yaw) ? yaw : 0 };
+    }
+
+    function captureCurrentDockPose() {
+      if (!latestHeartbeat) {
+        mapSummary.innerHTML = '<div><b>Error</b>No heartbeat pose yet</div>';
+        return;
+      }
+      dockPose.value = [
+        mapPointValue(latestHeartbeat.x),
+        mapPointValue(latestHeartbeat.y),
+        Number.isFinite(latestHeartbeat.yaw) ? latestHeartbeat.yaw.toFixed(1) : '0',
+      ].join(',');
+      localStorage.setItem('mygardenos_dock_pose', dockPose.value);
+      renderManualMapSummary();
+    }
+
+    function addStartPointAhead() {
+      const source = latestHeartbeat || recordedPoints[recordedPoints.length - 1];
+      if (!source) {
+        mapSummary.innerHTML = '<div><b>Error</b>No pose available for start point</div>';
+        return;
+      }
+      const distance = Math.max(0, Number.parseFloat(leaveDockDistance.value) || 1);
+      mappingStartPoint = poseAhead(source, distance);
+      localStorage.setItem('mygardenos_mapping_start_point', JSON.stringify(mappingStartPoint));
+      drawManualMap();
+      renderManualMapSummary();
+    }
+
+    async function driveOutFromDock() {
+      try {
+        const startPose = latestHeartbeat ? { ...latestHeartbeat } : undefined;
+        await enterRemoteModeForMap();
+        await sleep(1200);
+        const speed = 0.4;
+        const distance = Math.max(0, Number.parseFloat(leaveDockDistance.value) || 1);
+        const duration = Math.ceil((distance / speed) * 1000);
+        const deadline = Date.now() + Math.max(1800, duration + 1200);
+        mapSummary.innerHTML = `<div><b>Drive out</b>${distance}m</div><div><b>Status</b>Holding forward</div>`;
+        while (Date.now() < deadline) {
+          await sendCommand('$CONTROL,1', `Drive out ${distance}m`);
+          if (startPose && latestHeartbeat && distanceBetween(startPose, latestHeartbeat) >= distance) break;
+          await sleep(300);
+        }
+        await sendCommand('$CONTROL,0', 'Stop after drive out');
+        if (latestHeartbeat) {
+          mappingStartPoint = { ...latestHeartbeat };
+          localStorage.setItem('mygardenos_mapping_start_point', JSON.stringify(mappingStartPoint));
+          drawManualMap();
+        }
+        startManualMapRecording();
+        renderManualMapSummary();
+      } catch (error) {
+        try {
+          if (writeCharacteristic && device?.gatt?.connected) await sendCommand('$CONTROL,0', 'Stop after error');
+        } catch {
+          // Keep original error visible.
+        }
+        appendLog(`ERROR ${error.message || error}`);
+      }
+    }
+
+    function commandWithCrc(base) {
+      return `${base},${mapCrc(base)}`;
+    }
+
+    function buildManualMapCommands() {
+      if (recordedPoints.length < 3) throw new Error('At least 3 recorded points are required');
+      const boundaryPoints = [...recordedPoints];
+      const firstPoint = boundaryPoints[0];
+      const lastPoint = boundaryPoints[boundaryPoints.length - 1];
+      const closeThreshold = Math.max(0.2, Number.parseFloat(recordMinDistance.value) || 0.1);
+      if (firstPoint && lastPoint && distanceBetween(firstPoint, lastPoint) > closeThreshold) {
+        boundaryPoints.push({ ...firstPoint });
+      }
+      const mapIdValue = newMapId.value.trim() || mapId.value.trim() || String(Date.now());
+      newMapId.value = mapIdValue;
+      const [dockX = '0', dockY = '0', dockYaw = '0'] = dockPose.value.split(',').map((part) => part.trim());
+      const areaId = manualAreaId.value.trim() || '1';
+      const areaFlags = Array(10).fill('0');
+      const areaIndex = Math.max(1, Math.min(10, Number.parseInt(areaId, 10) || 1)) - 1;
+      areaFlags[areaIndex] = '1';
+      const headerBase = `$MAP,0,0,0,0,${mapIdValue},${dockX},${dockY},${dockYaw},${areaFlags.join(',')}`;
+      const commands = [commandWithCrc(headerBase), '$ACTION,5,0'];
+      const chunkSize = Math.max(1, Math.min(10, Number.parseInt(mapPacketPointCount.value, 10) || 5));
+      for (let index = 0; index < boundaryPoints.length; index += chunkSize) {
+        const chunk = boundaryPoints.slice(index, index + chunkSize);
+        const coords = chunk.flatMap((point) => [mapPointValue(point.x), mapPointValue(point.y)]).join(',');
+        const base = `$MAP,${areaId},1,${Math.floor(index / chunkSize)},${chunk.length},${coords}`;
+        commands.push(commandWithCrc(base));
+      }
+      commands.push('$ACTION,5,1');
+      return commands;
+    }
+
+    async function enterRemoteModeForMap() {
+      try {
+        await sendCommand('$ACTION,0', 'Enter remote mode');
+      } catch (error) {
+        appendLog(`ERROR ${error.message || error}`);
+      }
+    }
+
+    function startManualMapRecording() {
+      recordingMap = true;
+      if (latestHeartbeat) addRecordedPoint(latestHeartbeat);
+      renderManualMapSummary();
+    }
+
+    async function stopManualMapRecording() {
+      recordingMap = false;
+      renderManualMapSummary();
+      if (writeCharacteristic && device?.gatt?.connected) {
+        try {
+          await sendCommand('$CONTROL,0', 'Stop movement');
+        } catch (error) {
+          appendLog(`ERROR ${error.message || error}`);
+        }
+      }
+    }
+
+    function clearManualMapRecording() {
+      recordedPoints = [];
+      mappingStartPoint = undefined;
+      persistRecordedPoints();
+      localStorage.removeItem('mygardenos_mapping_start_point');
+      drawManualMap();
+      renderMapCommandSummary();
+    }
+
+    function generateManualMapCommands() {
+      try {
+        const commands = buildManualMapCommands();
+        mapCommands.value = commands.join('\n');
+        localStorage.setItem('mygardenos_map_commands', mapCommands.value);
+        renderMapCommandSummary();
+      } catch (error) {
+        mapSummary.innerHTML = `<div><b>Error</b>${escapeHtml(error.message || String(error))}</div>`;
+      }
+    }
+
+    async function sendControl(value) {
+      try {
+        await sendCommand(`$CONTROL,${value}`, `Control ${value}`);
+      } catch (error) {
+        appendLog(`ERROR ${error.message || error}`);
+      }
+    }
+
+    function startHoldingControl(value) {
+      if (value === '0') {
+        stopHoldingControl();
+        sendControl('0');
+        return;
+      }
+      if (activeControl === value && controlRepeatTimer) return;
+      stopHoldingControl(false);
+      activeControl = value;
+      sendControl(value);
+      controlRepeatTimer = setInterval(() => sendControl(value), 280);
+    }
+
+    function stopHoldingControl(sendStop = true) {
+      if (controlRepeatTimer) {
+        clearInterval(controlRepeatTimer);
+        controlRepeatTimer = undefined;
+      }
+      activeControl = undefined;
+      if (sendStop) sendControl('0');
+    }
+
+    function normalizeRobotCommand(line) {
+      const value = line.trim();
+      if (!value) return '';
+      if (!value.startsWith('{')) return value;
+      const parsed = JSON.parse(value);
+      if (!parsed.command) throw new Error(`Missing command in ${value}`);
+      return String(parsed.command).trim();
+    }
+
+    function nextMapId() {
+      const numeric = mapId.value.trim();
+      if (/^\d+$/.test(numeric)) return String(BigInt(numeric) + 1n);
+      return `${numeric || 'MAP'}_CLONE`;
+    }
+
+    function captureMapCommand(commandValue) {
+      const line = commandValue.trim();
+      if (!line.startsWith('$MAP,')) return;
+      const existing = new Set(mapCommandLinesFrom(capturedMapCommands.value));
+      if (existing.has(line)) return;
+      capturedMapCommands.value = [capturedMapCommands.value.trim(), line].filter(Boolean).join('\n');
+      localStorage.setItem('mygardenos_captured_map_commands', capturedMapCommands.value);
+      renderMapCommandSummary();
+    }
+
+    function mapCommandLinesFrom(value) {
+      return value
+        .split('\n')
+        .map((line) => line.trim())
+        .filter((line) => line && !line.startsWith('#'));
+    }
+
+    function crc16Usb(value) {
+      let crc = 0xffff;
+      for (const byte of new TextEncoder().encode(value)) {
+        crc ^= byte;
+        for (let bit = 0; bit < 8; bit += 1) {
+          crc = (crc & 1) ? ((crc >>> 1) ^ 0xA001) : (crc >>> 1);
+          crc &= 0xffff;
+        }
+      }
+      return (crc ^ 0xffff) & 0xffff;
+    }
+
+    function crc16Modbus(value) {
+      let crc = 0xffff;
+      for (const byte of new TextEncoder().encode(value)) {
+        crc ^= byte;
+        for (let bit = 0; bit < 8; bit += 1) {
+          crc = (crc & 1) ? ((crc >>> 1) ^ 0xA001) : (crc >>> 1);
+          crc &= 0xffff;
+        }
+      }
+      return crc;
+    }
+
+    function crc16Xmodem(value, appendZeros = false, init = 0) {
+      let crc = init;
+      const bytes = [...new TextEncoder().encode(value)];
+      if (appendZeros) bytes.push(0, 0);
+      for (const byte of bytes) {
+        crc ^= byte << 8;
+        for (let bit = 0; bit < 8; bit += 1) {
+          crc = (crc & 0x8000) ? ((crc << 1) ^ 0x1021) & 0xffff : (crc << 1) & 0xffff;
+        }
+      }
+      return crc & 0xffff;
+    }
+
+    function mapCrc(value) {
+      switch (mapCrcMode.value) {
+        case 'modbus':
+          return crc16Modbus(value);
+        case 'xmodem':
+          return crc16Xmodem(value);
+        case 'xmodem-zero':
+          return crc16Xmodem(value, true);
+        case 'ccitt-false':
+          return crc16Xmodem(value, false, 0xffff);
+        case 'usb':
+        default:
+          return crc16Usb(value);
+      }
+    }
+
+    function recalculateMapCrc(commandValue) {
+      if (!commandValue.startsWith('$MAP,')) return commandValue;
+      const parts = commandValue.split(',');
+      if (parts.length < 6) return commandValue;
+      const withoutCrc = parts.slice(0, -1).join(',');
+      return `${withoutCrc},${mapCrc(withoutCrc)}`;
+    }
+
+    function replaceMapCrc(commandValue, crcValue) {
+      if (!commandValue.startsWith('$MAP,')) return commandValue;
+      const parts = commandValue.split(',');
+      if (parts.length < 6) return commandValue;
+      parts[parts.length - 1] = String(crcValue).trim();
+      return parts.join(',');
+    }
+
+    function cloneMapCommand(commandValue, clonedMapId) {
+      if (!commandValue.startsWith('$MAP,')) return commandValue;
+      const parts = commandValue.split(',');
+      if (parts[1] === '0' && parts[2] === '0' && parts.length > 5) {
+        if (parts[5] === clonedMapId) return commandValue;
+        parts[5] = clonedMapId;
+        return recalculateMapCrc(parts.join(','));
+      }
+      return commandValue;
+    }
+
+    function cloneCapturedMapCommands() {
+      const sourceLines = mapCommandLinesFrom(capturedMapCommands.value);
+      if (!sourceLines.length) {
+        mapSummary.innerHTML = '<div><b>Error</b>No captured map commands yet</div>';
+        return;
+      }
+      const clonedMapId = newMapId.value.trim() || nextMapId();
+      newMapId.value = clonedMapId;
+      const cloned = sourceLines.map((line) => {
+        const commandValue = normalizeRobotCommand(line);
+        return cloneMapCommand(commandValue, clonedMapId);
+      });
+      const hasSaveMap = cloned.some((line) => line === '$ACTION,5,0');
+      const hasSaveArea = cloned.some((line) => line === '$ACTION,5,1');
+      mapCommands.value = [
+        ...cloned,
+        ...(hasSaveMap ? [] : ['$ACTION,5,0']),
+        ...(hasSaveArea ? [] : ['$ACTION,5,1']),
+      ].join('\n');
+      localStorage.setItem('mygardenos_map_commands', mapCommands.value);
+      renderMapCommandSummary();
+    }
+
+    function renderSampleMapCommands() {
+      mapId.value = '90191082715388544';
+      newMapId.value = nextMapId();
+      dockPose.value = '2,1,45.3';
+      capturedMapCommands.value = SAMPLE_MAP_COMMANDS;
+      mapCommands.value = SAMPLE_MAP_COMMANDS;
+      localStorage.setItem('mygardenos_captured_map_commands', capturedMapCommands.value);
+      localStorage.setItem('mygardenos_map_commands', mapCommands.value);
+      renderMapCommandSummary();
+    }
+
+    function mapCommandLines() {
+      return mapCommandLinesFrom(mapCommands.value);
+    }
+
+    function renderMapCommandSummary() {
+      const lines = mapCommandLines();
+      const capturedLines = mapCommandLinesFrom(capturedMapCommands.value);
+      const mapLine = lines.map((line) => {
+        try { return normalizeRobotCommand(line); } catch { return ''; }
+      }).find((line) => line.startsWith('$MAP,0,0'));
+      const parts = mapLine ? mapLine.split(',') : [];
+      mapSummary.innerHTML = [
+        ['Commands', String(lines.length)],
+        ['Captured', String(capturedLines.length)],
+        ['Map ID', parts[5] || mapId.value.trim() || '-'],
+        ['New Map ID', newMapId.value.trim() || '-'],
+        ['Transport', mapTransport.value === 'ble' ? 'BLE' : 'MQTT'],
+        ['Robot ID', commandRobotId.value.trim() || '-'],
+      ].map(([label, value]) => `<div><b>${label}</b>${escapeHtml(value)}</div>`).join('');
+      updateMapButtons();
+    }
+
+    function updateMapButtons() {
+      const hasCommands = mapCommandLines().length > 0;
+      const wantsBle = mapTransport.value === 'ble';
+      const bleReady = Boolean(writeCharacteristic && device?.gatt?.connected);
+      sendMapCommands.disabled = !hasCommands || (wantsBle && !bleReady) || (!wantsBle && !apiToken);
+      readCurrentMapCloud.disabled = !apiToken;
+    }
+
+    async function sendCloudRobotCommand(commandValue) {
+      return apiRequest('/iot/mqtt/robot-command', {
+        method: 'POST',
+        body: JSON.stringify({
+          robotId: commandRobotId.value.trim(),
+          command: commandValue,
+        }),
+      });
+    }
+
+    async function sendMapCommand(commandValue) {
+      if (mapTransport.value === 'ble') {
+        const shouldWait = commandValue.startsWith('$MAP,') || commandValue.startsWith('$ACTION,5');
+        if (!shouldWait) {
+          await sendCommand(commandValue, `Map ${commandValue}`);
+          return { code: '00', message: 'sent' };
+        }
+        let lastResponse;
+        const attempts = commandValue.startsWith('$MAP,') ? 4 : 1;
+        for (let attempt = 1; attempt <= attempts; attempt += 1) {
+          lastResponse = await sendCommandAndWait(commandValue, `Map ${commandValue}${attempt > 1 ? ` retry ${attempt}` : ''}`, {
+            withResponse: false,
+            chunkSize: commandValue.startsWith('$MAP,') ? 20 : 0,
+            chunkDelayMs: commandValue.startsWith('$MAP,') ? 35 : 0,
+            timeoutMs: 6000,
+          });
+          if (lastResponse.code === '00') return lastResponse;
+          appendLog(`Map ACK ${robotAckKey(commandValue)} code ${lastResponse.code} ${lastResponse.message || ''}`);
+          if (lastResponse.message !== 'crc fail') break;
+          await sleep(600);
+        }
+        throw new Error(`${robotAckKey(commandValue)} failed: ${lastResponse?.message || lastResponse?.code || 'unknown'}`);
+      }
+      const result = await sendCloudRobotCommand(commandValue);
+      appendLog(`MQTT TX ${result.topic} ${commandValue}`);
+      return { code: '00', message: 'sent' };
+    }
+
+    function sleep(ms) {
+      return new Promise((resolve) => setTimeout(resolve, ms));
+    }
+
+    async function readCurrentMapViaBle() {
+      try {
+        mapSummary.innerHTML = '<div><b>Reading</b>Map ID and task only</div><div><b>Note</b>Full $MAP payload is not returned by documented reads</div>';
+        await sendCommand('$STATUS', 'Read map from STATUS');
+        await sleep(350);
+        await sendCommand('$TASK,0,0', 'Read current task');
+        await sleep(350);
+        await sendCommand('$TASK,0,1', 'Read default task');
+      } catch (error) {
+        appendLog(`ERROR ${error.message || error}`);
+      }
+    }
+
+    async function probeMapReadViaBle() {
+      try {
+        mapSummary.innerHTML = '<div><b>Probe</b>Trying undocumented $MAP read forms</div><div><b>Expected</b>May return errors if firmware does not support map export</div>';
+        const current = mapId.value.trim();
+        const commands = ['$MAP,0', '$MAP,0,0', '$MAP,0,0,0', current ? `$MAP,0,${current}` : ''];
+        for (const commandValue of commands.filter(Boolean)) {
+          await sendCommand(commandValue, `Probe ${commandValue}`);
+          await sleep(600);
+        }
+      } catch (error) {
+        appendLog(`ERROR ${error.message || error}`);
+      }
+    }
+
+    async function readCurrentMapViaCloud() {
+      try {
+        monitorStatus.value = 'Reading current map/task via MQTT...';
+        mapSummary.innerHTML = '<div><b>Reading</b>Map ID and task only</div><div><b>Note</b>Watch ResponseCommand for $STATUS/$TASK replies</div>';
+        for (const commandValue of ['$STATUS', '$TASK,0,0', '$TASK,0,1']) {
+          await sendCloudRobotCommand(commandValue);
+          await sleep(350);
+        }
+        monitorStatus.value = 'Map/task read commands sent';
+        await refreshBackendMonitor();
+      } catch (error) {
+        monitorStatus.value = error.message || String(error);
+      }
+    }
+
+    async function sendMapSequence() {
+      const lines = mapCommandLines();
+      const delay = Math.max(0, Number.parseInt(mapCommandDelay.value, 10) || 0);
+      try {
+        sendMapCommands.disabled = true;
+        mapSummary.innerHTML = `<div><b>Sending</b>0 / ${lines.length}</div>`;
+        for (let index = 0; index < lines.length; index += 1) {
+          const commandValue = normalizeRobotCommand(lines[index]);
+          const response = await sendMapCommand(commandValue);
+          mapSummary.innerHTML = `<div><b>Sending</b>${index + 1} / ${lines.length}</div><div><b>Last command</b>${escapeHtml(commandValue)}</div><div><b>Last ACK</b>${escapeHtml(response.message || response.code || '')}</div>`;
+          if (index < lines.length - 1) await sleep(delay);
+        }
+        mapSummary.innerHTML += '<div><b>Status</b>Done</div>';
+        if (mapTransport.value === 'cloud') await refreshBackendMonitor();
+      } catch (error) {
+        mapSummary.innerHTML += `<div><b>Error</b>${escapeHtml(error.message || String(error))}</div>`;
+        appendLog(`ERROR ${error.message || error}`);
+      } finally {
+        updateMapButtons();
+      }
+    }
+
+    async function testMapHeaderOnly() {
+      try {
+        const firstMap = mapCommandLines()
+          .map((line) => {
+            try { return normalizeRobotCommand(line); } catch { return ''; }
+          })
+          .find((line) => line.startsWith('$MAP,0,0'));
+        if (!firstMap) throw new Error('No $MAP,0,0 header found. Generate map commands first.');
+        const response = await sendMapCommand(firstMap);
+        mapSummary.innerHTML = `<div><b>Header test</b>${escapeHtml(response.message || response.code || '')}</div><div><b>CRC mode</b>${escapeHtml(mapCrcMode.value)}</div>`;
+      } catch (error) {
+        mapSummary.innerHTML = `<div><b>Header test error</b>${escapeHtml(error.message || String(error))}</div><div><b>CRC mode</b>${escapeHtml(mapCrcMode.value)}</div>`;
+        appendLog(`ERROR ${error.message || error}`);
+      }
+    }
+
+    async function testAllMapHeaderModes() {
+      const modes = ['usb', 'modbus', 'xmodem', 'xmodem-zero', 'ccitt-false'];
+      const originalMode = mapCrcMode.value;
+      const results = [];
+      try {
+        testAllMapHeaders.disabled = true;
+        for (const mode of modes) {
+          mapCrcMode.value = mode;
+          generateManualMapCommands();
+          const firstMap = mapCommandLines()
+            .map((line) => {
+              try { return normalizeRobotCommand(line); } catch { return ''; }
+            })
+            .find((line) => line.startsWith('$MAP,0,0'));
+          if (!firstMap) throw new Error('No $MAP,0,0 header found. Generate map commands first.');
+          const crc = firstMap.split(',').at(-1);
+          try {
+            const response = await sendMapCommand(firstMap);
+            results.push([mode, crc, response.code || '-', response.message || '']);
+            if (response.code === '00') break;
+          } catch (error) {
+            results.push([mode, crc, 'error', error.message || String(error)]);
+          }
+          await sleep(600);
+        }
+        mapSummary.innerHTML = results.map(([mode, crc, code, message]) =>
+          `<div><b>${escapeHtml(mode)}</b>crc ${escapeHtml(crc)} · ${escapeHtml(code)} · ${escapeHtml(message)}</div>`
+        ).join('');
+      } finally {
+        testAllMapHeaders.disabled = false;
+        if (!results.some(([, , code]) => code === '00')) {
+          mapCrcMode.value = originalMode;
+          generateManualMapCommands();
+        }
+      }
+    }
+
+    async function connect() {
+      try {
+        if (!navigator.bluetooth) {
+          support.textContent = 'This browser does not support Web Bluetooth. Use Chrome or Edge on Mac/Windows/Android.';
+          return;
+        }
+        support.textContent = '';
+        device = await getPreferredBluetoothDevice();
+        device.addEventListener('gattserverdisconnected', () => {
+          appendLog('Disconnected');
+          setConnected(false);
+        });
+        server = await device.gatt.connect();
+        const service = await server.getPrimaryService(SERVICE_UUID);
+        writeCharacteristic = await service.getCharacteristic(WRITE_UUID);
+        readCharacteristic = await service.getCharacteristic(READ_UUID);
+        await readCharacteristic.startNotifications();
+        readCharacteristic.addEventListener('characteristicvaluechanged', (event) => {
+          const text = new TextDecoder().decode(event.target.value);
+          appendLog(`RX ${text.replace(/\r/g, '\\r').replace(/\n/g, '\\n')}`);
+          parseRobotResponse(text);
+        });
+        setConnected(true);
+        appendLog('Connected and notifications enabled');
+      } catch (error) {
+        appendLog(`ERROR ${error.message || error}`);
+        setConnected(false);
+      }
+    }
+
+    async function getPreferredBluetoothDevice() {
+      if (navigator.bluetooth.getDevices) {
+        const knownDevices = await navigator.bluetooth.getDevices();
+        const knownMower = knownDevices.find((item) => item.name === 'NBMower');
+        if (knownMower) {
+          appendLog('Reconnecting previously authorized NBMower...');
+          return knownMower;
+        }
+      }
+      appendLog('Requesting NBMower...');
+      return navigator.bluetooth.requestDevice({
+        filters: [{ name: 'NBMower' }],
+        optionalServices: [SERVICE_UUID],
+      });
+    }
+
+    async function readAt() {
+      try {
+        await sendCommand('$AT,0', 'Read AT');
+      } catch (error) {
+        appendLog(`ERROR ${error.message || error}`);
+      }
+    }
+
+    async function writeConfig() {
+      try {
+        await writeText(currentCommand());
+      } catch (error) {
+        appendLog(`ERROR ${error.message || error}`);
+      }
+    }
+
+    async function writeEscapedLiteralConfig() {
+      try {
+        await writeText(currentEscapedLiteralCommand(), 'Escaped literal TX');
+      } catch (error) {
+        appendLog(`ERROR ${error.message || error}`);
+      }
+    }
+
+    function disconnect() {
+      if (device?.gatt?.connected) device.gatt.disconnect();
+      setConnected(false);
+    }
+
+    async function apiRequest(path, options = {}) {
+      const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
+      if (apiToken) headers.Authorization = `Bearer ${apiToken}`;
+      const response = await fetch(`${apiBase.value.replace(/\/$/, '')}${path}`, { ...options, headers });
+      const text = await response.text();
+      let body;
+      try { body = text ? JSON.parse(text) : null; } catch { body = text; }
+      if (!response.ok) {
+        const detail = body?.detail || text || response.statusText;
+        throw new Error(`${response.status} ${detail}`);
+      }
+      return body;
+    }
+
+    async function loginBackend() {
+      try {
+        monitorStatus.value = 'Logging in...';
+        const result = await apiRequest('/auth/login', {
+          method: 'POST',
+          body: JSON.stringify({ email: apiEmail.value.trim(), password: apiPassword.value }),
+          headers: {},
+        });
+        apiToken = result.access_token;
+        localStorage.setItem('mygardenos_api_token', apiToken);
+        monitorStatus.value = `Logged in as ${result.user.email}`;
+        loadMessages.disabled = false;
+        toggleAuto.disabled = false;
+        sendCloudCommandButton.disabled = false;
+        updateMapButtons();
+        await refreshBackendMonitor();
+      } catch (error) {
+        monitorStatus.value = error.message || String(error);
+      }
+    }
+
+    async function sendCloudCommand() {
+      try {
+        monitorStatus.value = 'Sending cloud command...';
+        const result = await apiRequest('/iot/mqtt/robot-command', {
+          method: 'POST',
+          body: JSON.stringify({
+            robotId: commandRobotId.value.trim(),
+            command: cloudCommand.value.trim(),
+          }),
+        });
+        monitorStatus.value = result.published
+          ? `Sent ${result.commandCode} to ${result.topic}`
+          : `Queued locally but MQTT publish was not confirmed`;
+        await refreshBackendMonitor();
+      } catch (error) {
+        monitorStatus.value = error.message || String(error);
+      }
+    }
+
+    async function refreshBackendMonitor() {
+      try {
+        const [status, list] = await Promise.all([
+          apiRequest('/iot/mqtt/public/status'),
+          apiRequest('/iot/mqtt/public/messages'),
+        ]);
+        backendSummary.innerHTML = [
+          ['Enabled', String(status.enabled)],
+          ['Broker', `${status.host}:${status.port}`],
+          ['Topics', status.topics.join(', ')],
+          ['Messages', String(list.length)],
+        ].map(([label, value]) => `<div><b>${label}</b>${value}</div>`).join('');
+        renderMessages(list);
+        monitorStatus.value = `Updated ${new Date().toLocaleTimeString()}`;
+      } catch (error) {
+        monitorStatus.value = error.message || String(error);
+      }
+    }
+
+    async function clearBackendMessages() {
+      try {
+        const result = await apiRequest('/iot/mqtt/public/messages/clear', { method: 'POST' });
+        renderMessages([]);
+        monitorStatus.value = `Cleared ${result.cleared || 0} messages`;
+        await refreshBackendMonitor();
+      } catch (error) {
+        monitorStatus.value = error.message || String(error);
+      }
+    }
+
+    function renderMessages(list) {
+      if (!list.length) {
+        messages.innerHTML = '<p>No MQTT messages or broker logs received yet.</p>';
+        return;
+      }
+      messages.innerHTML = list.map((item) => {
+        const payload = item.json ? JSON.stringify(item.json, null, 2) : item.payload;
+        if (item.json?.command?.startsWith?.('$MAP,')) captureMapCommand(item.json.command);
+        return `<div class="message">
+          <div class="message-head"><span>${escapeHtml(item.topic)}</span><span class="message-time">${escapeHtml(item.received_at || '')}</span></div>
+          <pre>${escapeHtml(payload)}</pre>
+        </div>`;
+      }).join('');
+    }
+
+    function escapeHtml(value) {
+      return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+
+    function toggleAutoRefresh() {
+      if (refreshTimer) {
+        clearInterval(refreshTimer);
+        refreshTimer = undefined;
+        toggleAuto.textContent = 'Start Auto Refresh';
+        return;
+      }
+      refreshBackendMonitor();
+      refreshTimer = setInterval(refreshBackendMonitor, 3000);
+      toggleAuto.textContent = 'Stop Auto Refresh';
+    }
+
+    tabButtons.forEach((button) => button.addEventListener('click', () => switchTab(button.dataset.tab)));
+    [host, port, username, password].forEach((input) => input.addEventListener('input', updateCommand));
+    [mapCommands, capturedMapCommands, mapTransport, commandRobotId, newMapId].forEach((input) => input.addEventListener('input', () => {
+      localStorage.setItem('mygardenos_captured_map_commands', capturedMapCommands.value);
+      localStorage.setItem('mygardenos_map_commands', mapCommands.value);
+      renderMapCommandSummary();
+    }));
+    mapCrcMode.addEventListener('change', generateManualMapCommands);
+    mapTransport.addEventListener('change', renderMapCommandSummary);
+    connectButton.addEventListener('click', connect);
+    readButton.addEventListener('click', readAt);
+    writeButton.addEventListener('click', writeConfig);
+    writeEscapedButton.addEventListener('click', writeEscapedLiteralConfig);
+    disconnectButton.addEventListener('click', disconnect);
+    apiLogin.addEventListener('click', loginBackend);
+    loadMessages.addEventListener('click', refreshBackendMonitor);
+    toggleAuto.addEventListener('click', toggleAutoRefresh);
+    clearMessagesButton.addEventListener('click', clearBackendMessages);
+    sendCloudCommandButton.addEventListener('click', sendCloudCommand);
+    readCurrentMapBle.addEventListener('click', readCurrentMapViaBle);
+    readCurrentMapCloud.addEventListener('click', readCurrentMapViaCloud);
+    probeMapReadBle.addEventListener('click', probeMapReadViaBle);
+    captureDockPose.addEventListener('click', captureCurrentDockPose);
+    addOneMeterStart.addEventListener('click', addStartPointAhead);
+    driveOutOneMeter.addEventListener('click', driveOutFromDock);
+    enterRemoteForMap.addEventListener('click', enterRemoteModeForMap);
+    startRecordingMap.addEventListener('click', startManualMapRecording);
+    stopRecordingMap.addEventListener('click', stopManualMapRecording);
+    clearRecordedMap.addEventListener('click', clearManualMapRecording);
+    generateManualMap.addEventListener('click', generateManualMapCommands);
+    clearCapturedMap.addEventListener('click', () => {
+      capturedMapCommands.value = '';
+      localStorage.removeItem('mygardenos_captured_map_commands');
+      renderMapCommandSummary();
+    });
+    cloneCapturedMap.addEventListener('click', cloneCapturedMapCommands);
+    loadSampleMap.addEventListener('click', renderSampleMapCommands);
+    testMapHeader.addEventListener('click', testMapHeaderOnly);
+    testAllMapHeaders.addEventListener('click', testAllMapHeaderModes);
+    sendMapCommands.addEventListener('click', sendMapSequence);
+    controlButtons.forEach((button) => {
+      const control = button.dataset.control;
+      button.addEventListener('mousedown', () => startHoldingControl(control));
+      button.addEventListener('touchstart', (event) => {
+        event.preventDefault();
+        startHoldingControl(control);
+      });
+      if (control !== '0') {
+        button.addEventListener('mouseup', () => stopHoldingControl());
+        button.addEventListener('mouseleave', () => stopHoldingControl());
+        button.addEventListener('touchend', (event) => {
+          event.preventDefault();
+          stopHoldingControl();
+        });
+      }
+      button.addEventListener('click', (event) => event.preventDefault());
+    });
+    window.addEventListener('mouseup', () => {
+      if (activeControl) stopHoldingControl();
+    });
+    window.addEventListener('touchcancel', () => {
+      if (activeControl) stopHoldingControl();
+    });
+    document.querySelector('#system').addEventListener('click', () => sendCommand('$SYSTEM', 'Read SYSTEM').catch((error) => appendLog(`ERROR ${error.message || error}`)));
+    document.querySelector('#robotStatus').addEventListener('click', () => sendCommand('$STATUS', 'Read STATUS').catch((error) => appendLog(`ERROR ${error.message || error}`)));
+    document.querySelector('#readConfig').addEventListener('click', () => sendCommand('$CONFIG,0', 'Read CONFIG').catch((error) => appendLog(`ERROR ${error.message || error}`)));
+    document.querySelector('#enable4g').addEventListener('click', () => sendCommand('$CONFIG,1,304,1', 'Enable 4G').catch((error) => appendLog(`ERROR ${error.message || error}`)));
+    document.querySelector('#selfCheck').addEventListener('click', () => sendCommand('$ACTION,4', 'Self-check').catch((error) => appendLog(`ERROR ${error.message || error}`)));
+    document.querySelector('#standby').addEventListener('click', () => sendCommand('$ACTION,6', 'Standby').catch((error) => appendLog(`ERROR ${error.message || error}`)));
+    document.querySelector('#remote').addEventListener('click', () => sendCommand('$ACTION,0', 'Remote').catch((error) => appendLog(`ERROR ${error.message || error}`)));
+
+    updateCommand();
+    capturedMapCommands.value = localStorage.getItem('mygardenos_captured_map_commands') || '';
+    mapCommands.value = localStorage.getItem('mygardenos_map_commands') || SAMPLE_MAP_COMMANDS;
+    dockPose.value = localStorage.getItem('mygardenos_dock_pose') || dockPose.value;
+    newMapId.value = nextMapId();
+    restoreRecordedPoints();
+    renderMapCommandSummary();
+    if (!navigator.bluetooth) {
+      support.textContent = 'Web Bluetooth is unavailable in this browser. iPhone/iPad browsers do not support it.';
+    }
+    if (apiToken) {
+      monitorStatus.value = 'Saved token available';
+      sendCloudCommandButton.disabled = false;
+      updateMapButtons();
+    }
+    refreshBackendMonitor();
+  </script>
+</body>
+</html>

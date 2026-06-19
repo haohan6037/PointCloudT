@@ -6,11 +6,13 @@ Date: 2026-06-19 NZST
 
 ## 1. System Overview
 
-The current repository contains a web-based mowing service platform and a point-cloud lawn-recognition prototype.
+The current repository contains a web-based mowing service platform, a point-cloud lawn-recognition prototype, and the MyGardenOS robot/mobile project.
 
 The mowing platform is the active operational application. It is a monolithic FastAPI app with static HTML/CSS/JavaScript frontends. It supports local PostgreSQL persistence, fallback in-memory mode, and a documented AWS test deployment path.
 
 The point-cloud workflow is currently a separate local tooling pipeline. It generates top-view imagery and lawn masks from LAS/LAZ input data.
+
+The MyGardenOS project is an independently runnable subproject under `apps/mygardenos/`. It contains a React Native / Expo mobile app, a FastAPI device backend, local MQTT broker config, and BLE/MQTT integration tools. It should stay separate from the mowing service platform unless an integration is introduced through an explicit API boundary.
 
 ---
 
@@ -27,6 +29,7 @@ Path: `mowing-platform/`
 | `store.py` | `InMemoryStore` and `PostgresStore` implementations. |
 | `models.py` | Pydantic request payloads and `StoreStatus`. |
 | `address_service.py` | Address lookup, geocoding, reverse geocoding, and distance helpers. |
+| `mqtt_monitor.py` | Platform MQTT subscriber for read-only robot/broker message monitoring. |
 | `data.py` | Seed orders/workers and static defaults. |
 | `schema.sql` | PostgreSQL table/index schema. |
 
@@ -59,6 +62,19 @@ Path: `mowing-platform/`
 | `infra/aws/test/` | Terraform scaffold for AWS test runtime. |
 | `.github/workflows/` | CI/deployment workflows. |
 
+### 2.5 MyGardenOS Robot / Mobile Project
+
+Path: `apps/mygardenos/`
+
+| Path | Responsibility |
+| --- | --- |
+| `mobile/` | React Native / Expo app for device/profile/family/mobile workflows. |
+| `backend/` | FastAPI device backend with auth, user/profile/family/device APIs, schedule persistence, MQTT monitor, and robot command endpoints. |
+| `tools/ble-mqtt-config/` | Browser Web Bluetooth tool for MQTT config, status reads, map-transfer experiments, and broker/message monitoring. |
+| `tools/mqtt-trajectory-viewer.html` | Local trajectory/map inspection tool. |
+| `mqtt/` | Local Mosquitto config for MQTT robot tests. |
+| `docker-compose.yml` | Local PostGIS + MQTT + backend runtime for MyGardenOS. |
+
 ---
 
 ## 3. Runtime Architecture
@@ -77,7 +93,25 @@ FastAPI app (mowing-platform/app.py -> routes.py)
         │    └─ InMemoryStore (fallback)
         │
         ├─ AddressService
+        ├─ PlatformMqttMonitor
         └─ Static HTML/CSS/JS serving
+```
+
+MyGardenOS runs as a separate subproject:
+
+```text
+Expo mobile app (apps/mygardenos/mobile)
+        │
+        ▼
+MyGardenOS FastAPI device backend (apps/mygardenos/backend)
+        │
+        ├─ PostgreSQL / PostGIS-ready schema
+        ├─ MQTT monitor and robot-command publisher
+        └─ Device/profile/family/settings APIs
+
+BLE/MQTT tools (apps/mygardenos/tools)
+        ├─ Web Bluetooth to robot service fff0 / fff1 / fff2
+        └─ MQTT broker/message inspection
 ```
 
 Store selection:
@@ -123,6 +157,36 @@ AWS test is separate from local dev:
 - Deployment doc: `docs/AWS_TEST_DEPLOYMENT.md`.
 
 AWS test should not reuse local `.env`.
+
+### 4.3 MyGardenOS Local Dev
+
+From the repository root:
+
+```bash
+cd apps/mygardenos/backend
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+uvicorn app.main:app --reload
+```
+
+Mobile:
+
+```bash
+cd apps/mygardenos/mobile
+npm install
+npm run typecheck
+npm run start
+```
+
+BLE/MQTT web tool:
+
+```bash
+cd apps/mygardenos/tools/ble-mqtt-config
+python3 -m http.server 4173
+```
+
+The MyGardenOS backend currently defaults to port `8000`; keep it separate from the mowing platform's port `8011`.
 
 ---
 
@@ -187,6 +251,28 @@ Key fields:
 - `whatsapp`
 - `wechat`
 - `address`
+
+### 5.5 `mqtt_messages`
+
+Stores robot and broker MQTT messages captured by the platform monitor.
+
+Key fields:
+
+- `id`
+- `topic`
+- `payload`
+- `payload_json`
+- `robot_id`
+- `message_type`
+- `source`
+- `received_at`
+
+Design stance:
+
+- Platform management is read/store focused.
+- The MQTT callback should not write PostgreSQL directly. It enqueues messages, the background writer appends raw NDJSON first, then batch-inserts searchable rows.
+- Raw MQTT archive lives under `mowing-platform/data/mqtt-raw/` by default and can be moved with `MQTT_RAW_LOG_DIR`.
+- Robot command publishing should stay outside this admin module until a separate safety design exists.
 
 ---
 
@@ -295,6 +381,19 @@ Admin opens user management
 
 Non-admin access returns 403.
 
+### 7.6 MQTT Monitoring
+
+```text
+Admin opens MQTT monitor
+  -> GET /api/mqtt/status starts/reads monitor status
+  -> MQTT subscriber enqueues HeartBeat / ResponseCommand / broker logs
+  -> Background writer appends raw NDJSON immediately
+  -> Background writer batch-inserts searchable PostgreSQL rows
+  -> GET /api/mqtt/messages reads stored history
+```
+
+The monitor subscribes using `MQTT_HOST`, `MQTT_PORT`, `MQTT_USERNAME`, `MQTT_PASSWORD`, and optional `MQTT_TOPICS`. Write pressure can be tuned with `MQTT_QUEUE_MAX_SIZE`, `MQTT_BATCH_SIZE`, `MQTT_FLUSH_INTERVAL_SECONDS`, and `MQTT_RAW_LOG_DIR`.
+
 ---
 
 ## 8. Address and Dispatch Design
@@ -342,7 +441,33 @@ Design stance:
 
 ---
 
-## 10. Validation Strategy
+## 10. MyGardenOS Integration Boundary
+
+MyGardenOS is colocated in the repository for one-person workflow efficiency, but it is not merged into the mowing platform runtime.
+
+Near-term rule:
+
+- Treat `mowing-platform/` and `apps/mygardenos/backend` as separate services.
+- Share product terminology and docs, not runtime internals.
+- Integrate through HTTP/API contracts when the service platform needs robot/device data.
+
+Future microservice split:
+
+```text
+GardenOS service platform
+  ├─ order/customer/provider/admin workflows
+  └─ optional device-service client
+
+MyGardenOS device service
+  ├─ mobile app backend
+  ├─ robot/device identity and status
+  ├─ MQTT monitor / command publish
+  └─ BLE/map-transfer support tooling
+```
+
+---
+
+## 11. Validation Strategy
 
 Recommended default validation:
 
@@ -368,9 +493,17 @@ Expected local PostgreSQL health:
 {"ok": true, "mode": "postgres", "databaseEnabled": true, "error": null}
 ```
 
+MyGardenOS validation:
+
+```bash
+cd apps/mygardenos/backend && python3 -m pytest tests
+cd apps/mygardenos/mobile && npm run typecheck
+git diff --check
+```
+
 ---
 
-## 11. Current Known Limitations
+## 12. Current Known Limitations
 
 1. API authorization is not yet fully token-based.
 2. Service-provider portal is still a skeleton.
@@ -378,10 +511,12 @@ Expected local PostgreSQL health:
 4. Robot maintenance workflows are future-phase.
 5. Address provider behavior depends on environment keys and provider restrictions.
 6. Point-cloud outputs are not yet integrated into customer quote or service planning workflows.
+7. MyGardenOS is colocated but not yet integrated with the service platform through a stable API contract.
+8. MQTT message analysis is storage-first; raw NDJSON archive and searchable PostgreSQL rows exist, but dashboards, trends, replay tooling, retention, and alert rules are not implemented yet.
 
 ---
 
-## 12. Recommended Architecture Next Steps
+## 13. Recommended Architecture Next Steps
 
 1. Add server-side Clerk JWT verification middleware/dependency.
 2. Apply role-aware API guards to order/admin/provider endpoints.
@@ -389,3 +524,4 @@ Expected local PostgreSQL health:
 4. Add a formal migration strategy for PostgreSQL schema changes.
 5. Define how point-cloud lawn boundary outputs attach to customer properties and orders.
 6. Separate app runtime config into explicit `dev`, `test`, and future `prod` profiles.
+7. Define the first API contract between `mowing-platform/` and `apps/mygardenos/backend` before sharing robot/device data.

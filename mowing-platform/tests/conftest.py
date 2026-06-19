@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import sys
+import os
 from pathlib import Path
 
 import pytest
 
 # Ensure mowing-platform package is importable / 确保模块可导入
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+os.environ.setdefault("MQTT_MONITOR_ENABLED", "0")
 
 
 @pytest.fixture

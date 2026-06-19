@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MyGardenOS 项目图谱</title>
+<style>
+  :root {
+    --green: #0F5A3A;
+    --green2: #2F8B58;
+    --bg: #F4F8F2;
+    --card: #FFFFFF;
+    --text: #183022;
+    --muted: #708476;
+    --line: #D7E5DA;
+    --red: #DE5A42;
+    --blue: #E8F2EA;
+    --gray: #ECF2EC;
+    --yellow: #DDBA52;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.7;
+    padding: 0;
+  }
+  .container {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 40px 24px 80px;
+  }
+
+  /* Header */
+  .header {
+    text-align: center;
+    padding: 60px 24px 32px;
+    background: linear-gradient(135deg, #0F5A3A, #2F8B58);
+    color: #fff;
+    border-radius: 0 0 32px 32px;
+    margin: 0 -24px 40px;
+  }
+  .header h1 { font-size: 2.2rem; font-weight: 800; letter-spacing: .5px; }
+  .header p { font-size: 1rem; opacity: .85; margin-top: 8px; }
+  .header .badge {
+    display: inline-block;
+    background: rgba(255,255,255,.18);
+    padding: 4px 14px;
+    border-radius: 20px;
+    font-size: .8rem;
+    margin-top: 12px;
+  }
+
+  /* Section */
+  .section {
+    background: var(--card);
+    border-radius: 20px;
+    border: 1px solid var(--line);
+    padding: 28px 32px;
+    margin-bottom: 24px;
+    box-shadow: 0 2px 12px rgba(13,58,38,.06);
+  }
+  .section-title {
+    font-size: 1.35rem;
+    font-weight: 700;
+    color: var(--green);
+    margin-bottom: 18px;
+    padding-bottom: 10px;
+    border-bottom: 2px solid var(--line);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .section-title .icon { font-size: 1.4rem; }
+
+  /* Table */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: .9rem;
+  }
+  table th, table td {
+    text-align: left;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--line);
+    vertical-align: top;
+  }
+  table th {
+    font-weight: 600;
+    color: var(--green);
+    background: var(--blue);
+    font-size: .82rem;
+    text-transform: uppercase;
+    letter-spacing: .3px;
+  }
+  table tr:last-child td { border-bottom: none; }
+
+  /* Code Block */
+  .code-block {
+    background: #1e2e24;
+    color: #d4e8d4;
+    padding: 16px 20px;
+    border-radius: 14px;
+    font-family: "SF Mono", "Fira Code", "Cascadia Code", monospace;
+    font-size: .82rem;
+    line-height: 1.6;
+    overflow-x: auto;
+    white-space: pre;
+    margin: 12px 0;
+  }
+  .code-block .comment { color: #6a9a7a; }
+  .code-block .keyword { color: #7ecba1; }
+  .code-block .string { color: #d4b87a; }
+
+  /* Architecture Diagram */
+  .arch {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0;
+    margin: 20px 0;
+  }
+  .arch-layer {
+    background: var(--blue);
+    border: 2px solid var(--green2);
+    border-radius: 12px;
+    padding: 14px 24px;
+    text-align: center;
+    font-weight: 600;
+    color: var(--green);
+    min-width: 320px;
+    position: relative;
+  }
+  .arch-layer .sub {
+    font-weight: 400;
+    font-size: .8rem;
+    color: var(--muted);
+    margin-top: 4px;
+  }
+  .arch-arrow {
+    color: var(--green2);
+    font-size: 1.2rem;
+    padding: 4px 0;
+    font-weight: 700;
+  }
+
+  /* Tree */
+  .tree { font-family: "SF Mono", "Fira Code", monospace; font-size: .85rem; line-height: 1.8; }
+  .tree .dir { color: var(--green); font-weight: 600; }
+  .tree .file { color: var(--text); }
+  .tree .annot { color: var(--muted); font-style: italic; font-size: .78rem; margin-left: 8px; }
+
+  /* Grid */
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+  .stat-card {
+    background: var(--blue);
+    border-radius: 14px;
+    padding: 16px;
+    text-align: center;
+  }
+  .stat-card .num { font-size: 1.6rem; font-weight: 800; color: var(--green); }
+  .stat-card .label { font-size: .8rem; color: var(--muted); margin-top: 2px; }
+
+  /* Tags */
+  .tag {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 10px;
+    font-size: .75rem;
+    font-weight: 600;
+    margin: 2px 3px;
+  }
+  .tag-green { background: #d4edda; color: #155724; }
+  .tag-yellow { background: #fff3cd; color: #856404; }
+  .tag-red { background: #f8d7da; color: #721c24; }
+  .tag-blue { background: #d1ecf1; color: #0c5460; }
+  .tag-gray { background: var(--gray); color: var(--muted); }
+
+  /* List (compact) */
+  .compact-list { list-style: none; }
+  .compact-list li {
+    padding: 6px 0;
+    border-bottom: 1px solid var(--line);
+    font-size: .88rem;
+  }
+  .compact-list li:last-child { border-bottom: none; }
+  .compact-list li::before { content: "•"; color: var(--green2); font-weight: bold; margin-right: 8px; }
+
+  /* Route grid */
+  .route-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px 20px;
+    font-size: .85rem;
+  }
+  .route-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .route-name {
+    font-family: "SF Mono", monospace;
+    font-size: .82rem;
+    background: var(--gray);
+    padding: 2px 8px;
+    border-radius: 6px;
+    min-width: 100px;
+    text-align: center;
+  }
+  .route-auth {
+    font-size: .7rem;
+    padding: 1px 8px;
+    border-radius: 8px;
+    font-weight: 600;
+  }
+  .auth-required { background: #f8d7da; color: #721c24; }
+  .auth-optional { background: #fff3cd; color: #856404; }
+  .auth-none { background: var(--gray); color: var(--muted); }
+
+  /* Health */
+  .health-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .health-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 14px;
+    background: var(--blue);
+    border-radius: 12px;
+    font-size: .88rem;
+  }
+  .health-status {
+    font-weight: 700;
+    padding: 2px 10px;
+    border-radius: 10px;
+    font-size: .78rem;
+  }
+  .health-ok { background: #d4edda; color: #155724; }
+  .health-warn { background: #fff3cd; color: #856404; }
+
+  hr { border: none; border-top: 1px solid var(--line); margin: 20px 0; }
+
+  /* Suggestions */
+  .suggestions { list-style: none; }
+  .suggestions li {
+    padding: 10px 14px;
+    margin-bottom: 8px;
+    background: #fff;
+    border-left: 4px solid var(--green2);
+    border-radius: 0 10px 10px 0;
+    box-shadow: 0 1px 4px rgba(0,0,0,.04);
+    font-size: .9rem;
+  }
+  .suggestions li strong { color: var(--green); }
+
+  /* Mermaid fallback */
+  .mermaid-alt {
+    background: #1e2e24;
+    border-radius: 14px;
+    padding: 20px;
+    overflow-x: auto;
+    margin: 16px 0;
+  }
+
+  @media (max-width: 640px) {
+    .grid-2, .grid-3, .route-grid, .health-grid { grid-template-columns: 1fr; }
+    .section { padding: 20px 16px; }
+    .header { padding: 40px 16px 24px; }
+    .container { padding: 24px 12px 60px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+
+<!-- ========== HEADER ========== -->
+<div class="header">
+  <h1>🌿 MyGardenOS</h1>
+  <p>Aitverse 割草机器人 — iOS 开发测试 MVP 项目图谱</p>
+  <span class="badge">📅 最近更新: 2026-06 • ⚡ React Native + FastAPI + MQTT</span>
+</div>
+
+<!-- ========== 一、项目概览 ========== -->
+<div class="section">
+  <div class="section-title"><span class="icon">📋</span> 一、项目概览</div>
+  <table>
+    <tr><th style="width:120px">维度</th><th>内容</th></tr>
+    <tr><td>项目名</td><td>MyGardenOS</td></tr>
+    <tr><td>定位</td><td>Aitverse 割草机器人 iOS 开发测试 MVP</td></tr>
+    <tr><td>状态</td><td><span class="tag tag-yellow">开发阶段</span> Mock 实现为主，已部署到 Railway</td></tr>
+    <tr><td>技术栈</td>
+      <td>
+        <span class="tag tag-green">React Native + Expo</span>
+        <span class="tag tag-blue">Python FastAPI</span>
+        <span class="tag tag-green">PostgreSQL/PostGIS</span>
+        <span class="tag tag-yellow">Mosquitto MQTT</span>
+      </td>
+    </tr>
+    <tr><td>部署</td><td>Railway + Docker Compose（本地开发）</td></tr>
+    <tr><td>iOS 构建</td><td>EAS Build + GitHub Actions → TestFlight / 模拟器</td></tr>
+  </table>
+</div>
+
+<!-- ========== 二、整体架构 ========== -->
+<div class="section">
+  <div class="section-title"><span class="icon">🏗️</span> 二、整体架构</div>
+  <div class="arch">
+    <div class="arch-layer">
+      📱 iOS Mobile App
+      <div class="sub">React Native / Expo / TypeScript — 单文件 App.tsx (1700+ 行)</div>
+    </div>
+    <div class="arch-arrow">⬇ HTTP REST (Bearer Token) ⬇</div>
+    <div class="arch-layer">
+      🐍 FastAPI Backend
+      <div class="sub">main.py (874 行单体路由) + SQLAlchemy + Pydantic</div>
+    </div>
+    <div class="arch-arrow">⬇ SQLAlchemy ⬇</div>
+    <div class="arch-layer">
+      🗄️ PostgreSQL (PostGIS 就绪)
+      <div class="sub">SQLite (开发) / Railway Postgres (生产)</div>
+    </div>
+  </div>
+  <div class="arch" style="margin-top:12px;">
+    <div class="arch-layer" style="min-width:280px; background:#fff3cd; border-color:var(--yellow);">
+      📡 MQTT Mosquitto Broker
+      <div class="sub">4G/BLE → MQTT → Backend (mqtt_monitor.py)</div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== 三、后端模块树 ========== -->
+<div class="section">
+  <div class="section-title"><span class="icon">📂</span> 三、后端模块树</div>
+
+  <div class="tree">
+<span class="dir">backend/</span>
+├── <span class="dir">app/</span>
+│   ├── <span class="file">main.py</span>        <span class="annot"># 单体 FastAPI 应用 (874行, 40+ 路由)</span>
+│   ├── <span class="file">database.py</span>     <span class="annot"># DB 连接: SQLite / PostgreSQL / RDS</span>
+│   ├── <span class="dir">models/</span>
+│   │   └── <span class="file">entities.py</span>    <span class="annot"># 9 个 SQLAlchemy 模型</span>
+│   ├── <span class="dir">schemas/</span>
+│   │   └── <span class="file">dto.py</span>         <span class="annot"># 25+ Pydantic DTO</span>
+│   └── <span class="dir">iot/</span>
+│       └── <span class="file">mqtt_monitor.py</span> <span class="annot"># MQTT 客户端 + 线程安全缓冲区</span>
+├── <span class="file">api/index.py</span>          <span class="annot"># Railway Vercel 兼容入口</span>
+├── <span class="dir">tests/</span>
+│   ├── <span class="file">conftest.py</span>        <span class="annot"># 测试夹具</span>
+│   └── <span class="file">test_api.py</span>        <span class="annot"># 381行集成测试 (27 passed ✅)</span>
+├── <span class="file">Dockerfile</span>
+├── <span class="file">Procfile</span>               <span class="annot"># Railway web 启动</span>
+├── <span class="file">requirements.txt</span>       <span class="annot"># 10 个依赖</span>
+└── <span class="file">runtime.txt</span>            <span class="annot"># python 3.12</span>
+  </div>
+
+  <hr>
+
+  <h3 style="font-size:1rem; font-weight:700; margin-bottom:12px;">数据模型（9 个表）</h3>
+  <table>
+    <tr><th>表</th><th>用途</th><th>关键字段</th></tr>
+    <tr><td><code>users</code></td><td>用户</td><td>email, username, password_hash, avatar_url, lat/lng</td></tr>
+    <tr><td><code>families</code></td><td>家庭/团队</td><td>code, name, address, lat/lng, creator_id</td></tr>
+    <tr><td><code>family_members</code></td><td>家庭成员关联</td><td>family_id, user_id, role</td></tr>
+    <tr><td><code>devices</code></td><td>设备</td><td>serial, name, model, status, battery, schedule_start/end</td></tr>
+    <tr><td><code>notifications</code></td><td>通知</td><td>user_id, kind, title, body, is_read</td></tr>
+    <tr><td><code>settings</code></td><td>用户设置</td><td>language, region, device/system_notifications</td></tr>
+    <tr><td><code>help_articles</code></td><td>帮助文章</td><td>slug, title, category, content</td></tr>
+    <tr><td><code>email_verification_codes</code></td><td>邮箱验证码</td><td>code_hash, expires_at</td></tr>
+    <tr><td><code>auth_sessions</code></td><td>认证会话</td><td>token_hash, expires_at</td></tr>
+  </table>
+
+  <hr>
+
+  <h3 style="font-size:1rem; font-weight:700; margin-bottom:12px;">API 路由（40 个端点）</h3>
+
+  <div style="display:grid; grid-template-columns:1fr 1fr; gap:4px 16px; font-size:.82rem;">
+    <div><strong style="color:var(--green)">🔧 设备</strong></div>
+    <div><strong style="color:var(--green)">🔐 认证</strong></div>
+
+    <div><code>GET /devices</code> — 已绑定设备</div>
+    <div><code>POST /auth/email/request-code</code></div>
+
+    <div><code>GET /devices/search</code> — 搜索可用</div>
+    <div><code>POST /auth/email/verify-code</code></div>
+
+    <div><code>POST /devices/bind</code></div>
+    <div><code>POST /auth/password/set</code></div>
+
+    <div><code>GET /devices/bluetooth/scan</code></div>
+    <div><code>POST /auth/password/reset</code></div>
+
+    <div><code>POST /devices/bluetooth/pair</code></div>
+    <div><code>POST /auth/password/verify</code></div>
+
+    <div><code>GET /devices/{id}/status</code></div>
+    <div><code>POST /auth/login</code></div>
+
+    <div><code>PATCH /devices/{id}/status</code></div>
+    <div><code>GET /auth/me</code></div>
+
+    <div><code>PATCH /devices/{id}/schedule</code></div>
+    <div><code>GET /auth/dev-user</code></div>
+
+    <div style="margin-top:8px"><strong style="color:var(--green)">👨‍👩‍👧‍👦 家庭</strong></div>
+    <div style="margin-top:8px"><strong style="color:var(--green)">👤 个人资料</strong></div>
+
+    <div><code>GET /families</code></div>
+    <div><code>GET /profile</code></div>
+
+    <div><code>POST /families</code></div>
+    <div><code>PATCH /profile</code></div>
+
+    <div><code>POST /families/join</code></div>
+    <div style="margin-top:8px"><strong style="color:var(--green)">📡 MQTT / IoT</strong></div>
+
+    <div><code>POST /families/{id}/leave</code></div>
+    <div><code>GET /iot/mqtt/status</code></div>
+
+    <div><code>PATCH /families/{id}</code></div>
+    <div><code>GET /iot/mqtt/messages</code></div>
+
+    <div><code>DELETE /families/{id}</code></div>
+    <div><code>POST /iot/mqtt/test-heartbeat</code></div>
+
+    <div style="margin-top:8px"><strong style="color:var(--green)">📢 其他</strong></div>
+    <div><code>POST /iot/mqtt/robot-command</code></div>
+
+    <div><code>GET /notifications</code></div>
+    <div><code>GET /iot/mqtt/public/status</code></div>
+
+    <div><code>GET /settings / PATCH /settings</code></div>
+    <div><code>GET /iot/mqtt/public/messages</code></div>
+
+    <div><code>GET /help/articles</code></div>
+    <div><code>POST /iot/mqtt/public/messages/clear</code></div>
+
+    <div><code>GET /help/articles/{slug}</code></div>
+    <div><code>GET /health</code></div>
+
+    <div><code>GET /about</code></div>
+    <div></div>
+  </div>
+</div>
+
+<!-- ========== 四、前端模块树 ========== -->
+<div class="section">
+  <div class="section-title"><span class="icon">📱</span> 四、前端模块树</div>
+
+  <div class="tree">
+<span class="dir">mobile/</span>
+├── <span class="file">App.tsx</span>           <span class="annot"># 1700+ 行巨型单文件（全部页面 + 路由 + 样式）</span>
+├── <span class="dir">src/</span>
+│   ├── <span class="dir">screens/</span>
+│   │   └── <span class="file">LoginScreen.tsx</span>  <span class="annot"># 登录页面（邮箱验证码 + 密码）</span>
+│   ├── <span class="dir">components/</span>
+│   │   └── <span class="file">ui.tsx</span>           <span class="annot"># 通用 UI 组件（Screen/Card/Row/Button 等）</span>
+│   ├── <span class="dir">services/</span>
+│   │   ├── <span class="file">api.ts</span>          <span class="annot"># HTTP API 客户端（18 个方法）</span>
+│   │   └── <span class="file">auth.ts</span>         <span class="annot"># 认证服务（7 个 auth 方法 + token 管理）</span>
+│   ├── <span class="dir">contexts/</span>
+│   │   └── <span class="file">AuthContext.tsx</span>   <span class="annot"># 认证上下文 Provider</span>
+│   └── <span class="dir">theme/</span>
+│       └── <span class="file">colors.ts</span>        <span class="annot"># 色彩系统</span>
+├── <span class="file">.env.development</span>      <span class="annot"># localhost:8000</span>
+├── <span class="file">.env.staging</span>           <span class="annot"># staging</span>
+├── <span class="file">.env.production</span>        <span class="annot"># Railway 生产</span>
+├── <span class="file">package.json</span>           <span class="annot"># expo 52, react-native 0.76</span>
+├── <span class="file">eas.json</span>               <span class="annot"># EAS Build 配置</span>
+└── <span class="file">tsconfig.json</span>
+  </div>
+
+  <hr>
+
+  <h3 style="font-size:1rem; font-weight:700; margin-bottom:12px;">页面路由（17 个 Route）</h3>
+  <div class="route-grid">
+    <div class="route-item"><span class="route-name">home</span><span class="route-auth auth-optional">可选</span> 主页</div>
+    <div class="route-item"><span class="route-name">login</span><span class="route-auth auth-none">否</span> 登录页面</div>
+    <div class="route-item"><span class="route-name">addDevice</span><span class="route-auth auth-required">是</span> 雷达扫描添加设备</div>
+    <div class="route-item"><span class="route-name">deviceDetail</span><span class="route-auth auth-required">是</span> 设备详情</div>
+    <div class="route-item"><span class="route-name">mapTool</span><span class="route-auth auth-required">是</span> 机器人地图工具</div>
+    <div class="route-item"><span class="route-name">profile</span><span class="route-auth auth-optional">可选</span> 个人主页</div>
+    <div class="route-item"><span class="route-name">account</span><span class="route-auth auth-required">是</span> 账户编辑</div>
+    <div class="route-item"><span class="route-name">families</span><span class="route-auth auth-required">是</span> 家庭列表</div>
+    <div class="route-item"><span class="route-name">familyDetail</span><span class="route-auth auth-required">是</span> 家庭详情/解散</div>
+    <div class="route-item"><span class="route-name">notifications</span><span class="route-auth auth-required">是</span> 通知列表</div>
+    <div class="route-item"><span class="route-name">notificationSettings</span><span class="route-auth auth-required">是</span> 通知设置</div>
+    <div class="route-item"><span class="route-name">help</span><span class="route-auth auth-none">否</span> 帮助/联系信息</div>
+    <div class="route-item"><span class="route-name">operationHelp</span><span class="route-auth auth-none">否</span> 操作帮助文章</div>
+    <div class="route-item"><span class="route-name">article</span><span class="route-auth auth-none">否</span> 文章详情（PDF手册样式）</div>
+    <div class="route-item"><span class="route-name">about</span><span class="route-auth auth-none">否</span> 关于页面</div>
+    <div class="route-item"><span class="route-name">general</span><span class="route-auth auth-required">是</span> 通用设置</div>
+    <div class="route-item"><span class="route-name">text</span><span class="route-auth auth-none">否</span> 纯文本展示</div>
+  </div>
+
+  <hr>
+
+  <h3 style="font-size:1rem; font-weight:700; margin-bottom:12px;">关键依赖</h3>
+  <div>
+    <span class="tag tag-blue">@expo/vector-icons</span>
+    <span class="tag tag-blue">@react-native-async-storage/async-storage</span>
+    <span class="tag tag-yellow">react-native-ble-plx</span>
+    <span class="tag tag-blue">expo-image-picker</span>
+    <span class="tag tag-blue">expo-location</span>
+    <span class="tag tag-blue">expo-clipboard</span>
+  </div>
+  <div style="margin-top:8px; font-size:.85rem; color:var(--muted);">
+    ⚠️ <code>react-native-ble-plx</code> 已安装但尚未真实集成（BLE UUID 未确认）
+  </div>
+</div>
+
+<!-- ========== 五、MQTT 与 IoT ========== -->
+<div class="section">
+  <div class="section-title"><span class="icon">📡</span> 五、MQTT 与 IoT 架构</div>
+
+  <div style="text-align:center; margin:16px 0; font-size:.9rem; line-height:2;">
+    <span class="tag tag-green">🤖 机器人 (4G/BLE)</span>
+    <span style="color:var(--muted)"> → </span>
+    <span class="tag tag-yellow">Mosquitto Broker</span>
+    <span style="color:var(--muted)"> (Railway TCP Proxy) </span>
+    <span style="color:var(--muted)"> → </span>
+    <span class="tag tag-blue">FastAPI Backend</span>
+    <span style="color:var(--muted)"> (mqtt_monitor.py)</span>
+  </div>
+
+  <table>
+    <tr><th>组件</th><th>状态</th><th>说明</th></tr>
+    <tr><td>MQTT Broker</td><td><span class="tag tag-green">已部署</span></td><td>Mosquitto，通过 Railway TCP Proxy 运行</td></tr>
+    <tr><td>Backend 客户端</td><td><span class="tag tag-green">已实现</span></td><td>paho-mqtt，线程安全消息缓冲区 (80条)</td></tr>
+    <tr><td>4G 机器人指令</td><td><span class="tag tag-yellow">已联调</span></td><td><code>$AT,1,10,host,port,user,pass</code> 格式</td></tr>
+    <tr><td>BLE 指令格式</td><td><span class="tag tag-yellow">已记录</span></td><td>JSON 字符串 + <code>\r\n</code> 结尾</td></tr>
+    <tr><td>BLE UUID</td><td><span class="tag tag-red">未确认</span></td><td>需要从实体设备或固件团队获取</td></tr>
+    <tr><td>协议文档</td><td><span class="tag tag-green">有</span></td><td>docs/protocols/ 下含精简版协议 + YModem 升级文档</td></tr>
+  </table>
+
+  <hr>
+
+  <h3 style="font-size:1rem; font-weight:700; margin-bottom:12px;">已知命令</h3>
+  <table>
+    <tr><th>命令</th><th>功能</th></tr>
+    <tr><td><code>$USER,2,admin,1234</code></td><td>解锁</td></tr>
+    <tr><td><code>$SYSTEM</code></td><td>获取系统信息</td></tr>
+    <tr><td><code>$STATUS</code></td><td>获取状态</td></tr>
+    <tr><td><code>$ACTION,7 / 8 / 9 / 6 / 0</code></td><td>暂停 / 恢复 / 回充 / 待机 / 远程模式</td></tr>
+  </table>
+</div>
+
+<!-- ========== 六、开发基础设施 ========== -->
+<div class="section">
+  <div class="section-title"><span class="icon">⚙️</span> 六、开发基础设施</div>
+
+  <h3 style="font-size:.95rem; font-weight:600; margin-bottom:8px;">本地开发</h3>
+  <div class="code-block"><span class="comment"># 后端</span>
+<span class="keyword">cd</span> apps/mygardenos/backend && python3 -m venv .venv && <span class="keyword">source</span> .venv/bin/activate
+pip install -r requirements.txt
+uvicorn app.main:app --reload
+
+<span class="comment"># 前端</span>
+<span class="keyword">cd</span> apps/mygardenos/mobile && npm install && npm run start
+
+<span class="comment"># Docker（含 PostGIS + MQTT）</span>
+<span class="keyword">cd</span> apps/mygardenos
+docker compose up --build</div>
+
+  <h3 style="font-size:.95rem; font-weight:600; margin-bottom:8px;">测试 & 部署</h3>
+  <div class="code-block"><span class="comment"># 后端测试</span>
+cd apps/mygardenos/backend && python3 -m pytest tests
+
+<span class="comment"># 前端类型检查</span>
+cd apps/mygardenos/mobile && npm run typecheck
+
+<span class="comment"># iOS 构建（GitHub Actions）</span>
+<span class="comment"># EAS Build → TestFlight / 模拟器</span></div>
+</div>
+
+<!-- ========== 七、项目健康状况 ========== -->
+<div class="section">
+  <div class="section-title"><span class="icon">💚</span> 七、项目健康状况</div>
+  <div class="health-grid">
+    <div class="health-item">Git 状态<span class="health-status health-warn">少量未提交</span></div>
+    <div class="health-item">后端测试（27个）<span class="health-status health-ok">✅ 全部通过</span></div>
+    <div class="health-item">前端类型检查<span class="health-status health-ok">✅ 通过</span></div>
+    <div class="health-item">App.tsx 体积<span class="health-status health-warn">⚠️ 1700+ 行巨型单文件</span></div>
+    <div class="health-item">BLE 集成<span class="health-status health-warn">⚠️ Mock，UUID 未确认</span></div>
+    <div class="health-item">Railway 部署<span class="health-status health-ok">✅ 运行中</span></div>
+    <div class="health-item">MQTT 架构<span class="health-status health-ok">✅ 就绪</span></div>
+    <div class="health-item">文档完整度<span class="health-status health-ok">✅ 较完善</span></div>
+  </div>
+</div>
+
+<!-- ========== 八、关键观察 ========== -->
+<div class="section">
+  <div class="section-title"><span class="icon">🔍</span> 八、关键观察 & 建议</div>
+  <ul class="suggestions">
+    <li><strong>App.tsx 膨胀严重</strong> — 所有页面、组件、样式都在一个 1700+ 行文件中，建议拆分成独立页面文件</li>
+    <li><strong>后端是单体单文件</strong> — main.py 874 行包含所有路由和业务逻辑，建议按模块拆分路由文件</li>
+    <li><strong>BLE 集成是 Mock</strong> — 蓝牙 UUID 未确认，当前是模拟的雷达扫描动画和配对流程；<code>react-native-ble-plx</code> 已安装待对接</li>
+    <li><strong>MQTT 架构就绪</strong> — 已部署 Broker 和后端订阅者，但机器人到 MQTT 的 4G 链路待真实验证</li>
+    <li><strong>PostGIS 就绪但未启用</strong> — 代码预留了 <code>geography(Point,4326)</code> 字段，当前用 lat/lng + SQLite 开发</li>
+    <li><strong>认证系统完整</strong> — 邮箱验证码 + 密码登录，带 token 会话管理和 debug 模式</li>
+    <li><strong>有 2 份回顾总结</strong> 在 <code>docs/summary/</code> 中（4G MQTT 联调回顾、地图传输回顾），开发前值得阅读</li>
+  </ul>
+</div>
+
+<!-- ========== FOOTER ========== -->
+<div style="text-align:center; padding:24px 0; color:var(--muted); font-size:.8rem;">
+  MyGardenOS 项目图谱 · 自动生成于 2026-06 · 由 Kun Agent 分析
+</div>
+
+</div>
+
+</body>
+</html>

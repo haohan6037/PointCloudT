@@ -36,7 +36,30 @@ document.querySelectorAll("[data-view]").forEach((button) => {
   button.addEventListener("click", () => {
     activeView = button.dataset.view;
     renderActiveView();
+    if (activeView === "mqtt") {
+      refreshMqttMonitor().catch((error) => alert(error.message));
+    }
   });
+});
+document.getElementById("refreshMqttBtn")?.addEventListener("click", async () => {
+  try {
+    await refreshMqttMonitor();
+  } catch (error) {
+    alert(error.message);
+  }
+});
+document.getElementById("recordMqttSampleBtn")?.addEventListener("click", async () => {
+  try {
+    await recordMqttSample();
+  } catch (error) {
+    alert(error.message);
+  }
+});
+document.getElementById("mqttSearchInput")?.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") refreshMqttMonitor().catch((error) => alert(error.message));
+});
+document.getElementById("mqttTopicInput")?.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") refreshMqttMonitor().catch((error) => alert(error.message));
 });
 document.getElementById("resetBtn").addEventListener("click", async () => {
   try {

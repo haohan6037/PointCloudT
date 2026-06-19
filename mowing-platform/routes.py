@@ -31,11 +31,13 @@ from models import (
     SendCodePayload,
     ServiceLogPayload,
     StoreStatus,
+    MqttMessagePayload,
     UserRoleUpdatePayload,
     VerifyCodePayload,
     WorkerAvailabilityPayload,
     WorkerProfilePayload,
 )
+from mqtt_monitor import PlatformMqttMonitor
 from store import InMemoryStore, PostgresStore
 
 
@@ -120,7 +122,14 @@ def create_app() -> FastAPI:
 
 # Module-level singleton / 模块级单例
 service = PlatformService()
+mqtt_monitor = PlatformMqttMonitor(service)
 app = create_app()
+
+
+@app.on_event("startup")
+def start_platform_mqtt_monitor() -> None:
+    """Start MQTT monitor when available / 启动 MQTT 监听（可用时）."""
+    mqtt_monitor.start()
 
 
 # ── Page & health routes / 页面和健康检查路由 ──────────────────────────
@@ -487,6 +496,37 @@ def update_user_role(
     require_admin_actor(actor_email=actor_email)
     user = service.store.update_user_role(payload.email, payload.role, payload.status)
     return {"user": user}
+
+
+@app.get("/api/mqtt/status")
+def mqtt_status(actor_email: str = Header(default="", alias="X-GardenOS-Actor-Email")) -> dict[str, Any]:
+    """MQTT monitor status / MQTT 监听状态."""
+    require_admin_actor(actor_email=actor_email)
+    mqtt_monitor.start()
+    return mqtt_monitor.status()
+
+
+@app.get("/api/mqtt/messages")
+def mqtt_messages(
+    limit: int = 100,
+    topic: str = "",
+    q: str = "",
+    actor_email: str = Header(default="", alias="X-GardenOS-Actor-Email"),
+) -> dict[str, Any]:
+    """List stored MQTT messages / 查询已存储 MQTT 消息."""
+    require_admin_actor(actor_email=actor_email)
+    return {"messages": service.store.list_mqtt_messages(limit=limit, topic=topic, q=q)}
+
+
+@app.post("/api/mqtt/messages")
+def record_mqtt_message(
+    payload: MqttMessagePayload,
+    actor_email: str = Header(default="", alias="X-GardenOS-Actor-Email"),
+) -> dict[str, Any]:
+    """Record a manual/test MQTT message / 记录手工或测试 MQTT 消息."""
+    require_admin_actor(actor_email=actor_email)
+    message = service.store.record_mqtt_message(payload.topic, payload.payload, payload.source)
+    return {"message": message}
 
 
 @app.post("/api/customer/auth/send-code")
