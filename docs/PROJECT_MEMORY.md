@@ -43,6 +43,8 @@ The point-cloud side remains a separate product line:
 - Generate top-view imagery from LAS/LAZ source data.
 - Extract first-pass lawn masks and editable lawn polygons.
 - Keep the output human-reviewable and editable before any mower-control use.
+- Robot coverage analysis should normalize map geometry and MQTT robot poses into the canonical `GOS-MAP-XY` frame defined in `docs/ROBOT_COORDINATE_ALIGNMENT_SPEC_V1.md`.
+- LAS/LAZ location handling must follow `docs/LAS_EPSG_COORDINATE_WORKFLOW_V1.md`: never treat LAS `x/y` as latitude/longitude; read `las.header.parse_crs()` first, fallback to `EPSG:32760` only when CRS is missing, and use `pyproj` with `always_xy=True`.
 
 Keep the mowing platform docs and the point-cloud/lawn-recognition docs separate.
 
@@ -146,8 +148,41 @@ AWS test is separate from local dev:
 - App URL currently documented in `docs/AWS_TEST_DEPLOYMENT.md`.
 - Runtime should use AWS RDS and Secrets Manager.
 - Existing RDS and secrets are reused; do not copy local `.env` into AWS.
+- Current ECS task definition after the 2026-06-21 MQTT broker migration is `gardenos-test:7`.
+- Current AWS app URL is `http://gardenos-test-1275568806.ap-southeast-6.elb.amazonaws.com`.
+- AWS `/api/health` verified `mode: postgres`, `databaseEnabled: true`.
+- Current AWS MQTT broker is EC2 Mosquitto instance `i-07ee81ca7a5d2e5e5` with Elastic IP `3.103.181.148`, port `53239`, security group `sg-067d077ce5e5c0830`.
 
 Secrets may be referenced by secret name or environment key only. Do not record secret values.
+
+### Robot MQTT Runtime Constraint
+
+The deployed platform must monitor the robot's existing MQTT broker. Do not move this path to AWS IoT Core unless a separate robot firmware/config change is planned.
+
+The previously discussed settings below were examples from the old Railway broker, not the correct new robot MQTT target:
+
+```text
+MQTT Address: 66.33.22.249
+MQTT Port: 53239
+```
+
+Do not use that example address for the AWS backend or robot configuration unless the user explicitly confirms it is still the intended broker. Railway MQTT is being replaced by the AWS broker below:
+
+```text
+MQTT Address: 3.103.181.148
+MQTT Port: 53239
+```
+
+Important constraints:
+
+- The robot only accepts address/IP plus port style MQTT settings, not an HTTP backend URL.
+- The robot's existing topic behavior must not be changed from the platform side.
+- Current monitored topics are `HeartBeat`, `ResponseCommand`, and `$SYS/broker/log/#`.
+- `nozomi.proxy.rlwy.net` and `66.33.22.249:53239` refer to the old/example Railway broker path in this context.
+- Username/password/TLS requirements are unknown until the real broker is confirmed.
+- Platform MQTT code must not default to any broker. `MQTT_HOST` and `MQTT_PORT` must be explicitly configured before live MQTT monitoring starts.
+- AWS ECS now listens to the AWS broker through `MQTT_HOST=3.103.181.148`, `MQTT_PORT=53239`, `MQTT_MONITOR_ENABLED=1`.
+- Platform management remains read/store focused. Do not add robot command publishing here without a separate safety design.
 
 ---
 
@@ -243,6 +278,7 @@ Known gaps:
 - Point-cloud/lawn recognition remains a separate research pipeline, not yet integrated into the mowing service order flow.
 - MQTT monitor is read/store focused only. Do not add robot command publishing to platform management without a separate safety design.
 - MQTT raw NDJSON is the durable high-volume capture path; PostgreSQL rows are for searchable recent history and analysis metadata (`robot_id`, `message_type`).
+- Manufacturer robot-coordinate integration is not implemented yet. Before coding coverage analysis, confirm the robot's coordinate frame, origin, axes, unit, heading convention, reference point, cut width, working-state field, timestamp, and accuracy fields against `docs/ROBOT_COORDINATE_ALIGNMENT_SPEC_V1.md`.
 
 ---
 
@@ -288,6 +324,14 @@ Expected local `/api/health` when PostgreSQL is connected:
 
 ### 2026-06-19
 
+- Added robot coordinate alignment spec `docs/ROBOT_COORDINATE_ALIGNMENT_SPEC_V1.md`: canonical analysis frame is `GOS-MAP-XY` in meters, fixed per map, +X map right/east, +Y map up/north, yaw counter-clockwise from +X; robot/manufacturer coordinates must be transformed into this frame before coverage/missed-area analysis.
+- Added LAS/EPSG coordinate workflow `docs/LAS_EPSG_COORDINATE_WORKFLOW_V1.md` and linked it from `docs/REGISTRATION_WORKFLOW_V1.md`: LAS header CRS is authoritative when present, missing CRS falls back to `EPSG:32760`, WGS84 `EPSG:4326` is only for Google Maps/sanity checks, and Auckland Council alignment uses `EPSG:2193`.
+- Deployed `main` to AWS test through GitHub Actions after adding the missing GitHub environment variables. Verified ECS `gardenos-test:5`, then updated ECS to `gardenos-test:6`; the MQTT runtime env used `MQTT_HOST=66.33.22.249` and `MQTT_PORT=53239`, but the user later clarified this was only the old Railway example broker, not the real new target.
+- Verified AWS app health. The previous MQTT monitor verification used the old/example broker and must be repeated after the real broker address/port is configured.
+- Confirmed robot MQTT setup should be address/port only, not AWS IoT Core key/cert and not the HTTP ALB URL. Existing robot topics must remain unchanged.
+- Removed the platform MQTT monitor's old default broker behavior. If `MQTT_HOST` or `MQTT_PORT` is missing, the monitor now refuses to start instead of connecting to the old Railway example broker.
+- Migrated the test MQTT broker path to AWS: created EC2 Mosquitto broker `i-07ee81ca7a5d2e5e5`, Elastic IP `3.103.181.148`, port `53239`, and broker SG `sg-067d077ce5e5c0830`; updated ECS to `gardenos-test:7` with `MQTT_HOST=3.103.181.148`, `MQTT_PORT=53239`, `MQTT_MONITOR_ENABLED=1`.
+- Verified new AWS broker end to end: TCP port reachable, MQTT publish/subscribe on `HeartBeat` works, `/api/mqtt/status` reports connected, and a simulated `HeartBeat` with robotId `AWS-END2END-c205d925` was persisted in `mqtt_messages`.
 - Added platform admin MQTT monitoring/storage direction: admin can view MQTT messages and the platform stores them through queue -> raw NDJSON -> batched PostgreSQL rows for later analysis; command publishing remains outside the admin platform by default.
 - Migrated the standalone MyGardenOS project into `apps/mygardenos/` as an independently runnable subproject.
 - Preserved service boundaries for future microservice extraction: service platform, robot/device backend, mobile app, BLE/MQTT tools, and point-cloud tooling remain separate.

@@ -1,0 +1,294 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AWS 使用服务清单 - GardenOS Test</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #172026;
+      --muted: #5f6f7a;
+      --line: #d8e0e6;
+      --panel: #f7f9fb;
+      --accent: #0f766e;
+      --warn: #a16207;
+      --danger: #b42318;
+    }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--ink);
+      background: #ffffff;
+    }
+    main {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 32px 20px 48px;
+    }
+    h1 {
+      margin: 0 0 8px;
+      font-size: 30px;
+      line-height: 1.2;
+      letter-spacing: 0;
+    }
+    h2 {
+      margin: 30px 0 12px;
+      font-size: 20px;
+      letter-spacing: 0;
+    }
+    p {
+      margin: 8px 0;
+      color: var(--muted);
+      line-height: 1.55;
+    }
+    .summary {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+      gap: 12px;
+      margin: 22px 0 26px;
+    }
+    .metric {
+      border: 1px solid var(--line);
+      background: var(--panel);
+      border-radius: 8px;
+      padding: 14px;
+    }
+    .metric span {
+      display: block;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .metric strong {
+      display: block;
+      margin-top: 4px;
+      font-size: 19px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      border: 1px solid var(--line);
+      font-size: 14px;
+    }
+    th, td {
+      vertical-align: top;
+      border-bottom: 1px solid var(--line);
+      padding: 11px 10px;
+      text-align: left;
+    }
+    th {
+      background: #eef4f6;
+      font-weight: 700;
+      color: #24323a;
+    }
+    tr:last-child td {
+      border-bottom: 0;
+    }
+    code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+      background: #eef4f6;
+      border-radius: 5px;
+      padding: 2px 5px;
+      word-break: break-all;
+    }
+    a {
+      color: var(--accent);
+      text-decoration: none;
+      font-weight: 650;
+    }
+    a:hover {
+      text-decoration: underline;
+    }
+    .pill {
+      display: inline-block;
+      border-radius: 999px;
+      padding: 3px 8px;
+      font-size: 12px;
+      font-weight: 700;
+      background: #e6f4f1;
+      color: #0f766e;
+    }
+    .warn {
+      color: var(--warn);
+      font-weight: 700;
+    }
+    .danger {
+      color: var(--danger);
+      font-weight: 700;
+    }
+    .note {
+      border-left: 4px solid var(--warn);
+      background: #fff8e6;
+      padding: 12px 14px;
+      margin: 16px 0;
+      color: #3f3000;
+    }
+    .small {
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>AWS 已使用服务清单</h1>
+    <p>账号 <code>133946907310</code>，主要运行区域 <code>ap-southeast-6</code>。生成时间：2026-06-21。</p>
+    <p>费用列使用 AWS Cost Explorer 的 2026-06-01 至 2026-06-22 本月至今 UnblendedCost；刚创建或刚变更的资源可能有数小时到账单延迟。</p>
+
+    <section class="summary">
+      <div class="metric">
+        <span>主要应用入口</span>
+        <strong>gardenos-test ALB</strong>
+      </div>
+      <div class="metric">
+        <span>机器人 MQTT 地址</span>
+        <strong>3.103.181.148:53239</strong>
+      </div>
+      <div class="metric">
+        <span>ECS 当前版本</span>
+        <strong>gardenos-test:7</strong>
+      </div>
+      <div class="metric">
+        <span>Cost Explorer 本月至今合计</span>
+        <strong>约 $0.00 USD</strong>
+      </div>
+    </section>
+
+    <div class="note">
+      重要：Cost Explorer 当前合计接近 0，并不表示后续免费。EC2、RDS、ALB、Fargate、公网 IPv4、EBS、Secrets Manager、日志和数据传输持续运行都会产生费用，只是账单还可能未完全入账。
+    </div>
+
+    <h2>活跃服务与资源</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>服务</th>
+          <th>Region</th>
+          <th>当前资源</th>
+          <th>收费</th>
+          <th>管理地址</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Amazon EC2</strong><br><span class="small">Mosquitto MQTT broker</span></td>
+          <td><code>ap-southeast-6</code></td>
+          <td>实例 <code>i-07ee81ca7a5d2e5e5</code>，<code>t3.nano</code>，公网 IP <code>3.103.181.148</code>，私网 IP <code>10.0.3.93</code></td>
+          <td><span class="warn">持续计费</span>：实例小时、8 GB gp3 EBS、公网 IPv4、出站流量。Cost Explorer 当前未明显入账。</td>
+          <td><a href="https://ap-southeast-6.console.aws.amazon.com/ec2/home?region=ap-southeast-6#InstanceDetails:instanceId=i-07ee81ca7a5d2e5e5">打开 EC2</a></td>
+        </tr>
+        <tr>
+          <td><strong>Amazon ECS / Fargate</strong><br><span class="small">GardenOS FastAPI app</span></td>
+          <td><code>ap-southeast-6</code></td>
+          <td>Cluster/Service <code>gardenos-test</code>，运行 <code>1</code> 个 Fargate task，task definition <code>gardenos-test:7</code></td>
+          <td><span class="warn">持续计费</span>：Fargate vCPU/内存运行时长。Cost Explorer：约 <code>$0.00</code>。</td>
+          <td><a href="https://ap-southeast-6.console.aws.amazon.com/ecs/v2/clusters/gardenos-test/services/gardenos-test/health?region=ap-southeast-6">打开 ECS Service</a></td>
+        </tr>
+        <tr>
+          <td><strong>Elastic Load Balancing</strong><br><span class="small">Application Load Balancer</span></td>
+          <td><code>ap-southeast-6</code></td>
+          <td>ALB <code>gardenos-test</code>，DNS <code>gardenos-test-1275568806.ap-southeast-6.elb.amazonaws.com</code>，Target Group <code>gardenos-test:8011</code></td>
+          <td><span class="warn">持续计费</span>：ALB 小时、LCU、数据处理、公网 IPv4。Cost Explorer：<code>$0.0000647374</code>。</td>
+          <td><a href="https://ap-southeast-6.console.aws.amazon.com/ec2/home?region=ap-southeast-6#LoadBalancers:search=gardenos-test">打开 Load Balancer</a></td>
+        </tr>
+        <tr>
+          <td><strong>Amazon RDS</strong><br><span class="small">PostgreSQL database</span></td>
+          <td><code>ap-southeast-6</code></td>
+          <td>DB <code>mygardenostestdb</code>，<code>db.t4g.micro</code>，PostgreSQL，20 GB，Single-AZ，状态 available</td>
+          <td><span class="warn">持续计费</span>：DB 实例小时、存储、备份、I/O、可能的公网 IPv4。Cost Explorer：<code>$0.000030589</code>。</td>
+          <td><a href="https://ap-southeast-6.console.aws.amazon.com/rds/home?region=ap-southeast-6#database:id=mygardenostestdb;is-cluster=false">打开 RDS</a></td>
+        </tr>
+        <tr>
+          <td><strong>Amazon ECR</strong><br><span class="small">Container image registry</span></td>
+          <td><code>ap-southeast-6</code></td>
+          <td>Repository <code>gardenos-test-app</code>，约 7 个镜像记录，合计约 341 MiB</td>
+          <td>按镜像存储和数据传输收费。Cost Explorer：<code>$0.0000000119</code>。</td>
+          <td><a href="https://ap-southeast-6.console.aws.amazon.com/ecr/repositories/private/133946907310/gardenos-test-app?region=ap-southeast-6">打开 ECR</a></td>
+        </tr>
+        <tr>
+          <td><strong>Amazon CloudWatch Logs</strong></td>
+          <td><code>ap-southeast-6</code></td>
+          <td>Log group <code>/ecs/gardenos-test</code>，约 2.9 MB，保留 14 天</td>
+          <td>按日志写入、存储和查询收费。Cost Explorer：<code>$0.00</code>。</td>
+          <td><a href="https://ap-southeast-6.console.aws.amazon.com/cloudwatch/home?region=ap-southeast-6#logsV2:log-groups">打开 CloudWatch Logs</a></td>
+        </tr>
+        <tr>
+          <td><strong>AWS Secrets Manager</strong></td>
+          <td><code>ap-southeast-6</code></td>
+          <td>Secrets：<code>Test_DB</code>、<code>Geoapify</code></td>
+          <td><span class="warn">持续计费</span>：每个 secret/月 + API 调用。Cost Explorer：约 <code>$0.00</code>。</td>
+          <td><a href="https://ap-southeast-6.console.aws.amazon.com/secretsmanager/listsecrets?region=ap-southeast-6">打开 Secrets Manager</a></td>
+        </tr>
+        <tr>
+          <td><strong>Amazon VPC / Networking</strong></td>
+          <td><code>ap-southeast-6</code></td>
+          <td>VPC <code>vpc-0ed2b0325e7e44ab0</code>，default VPC <code>vpc-02ea48d1cfe6d37eb</code>，多个 subnet / SG / ENI；MQTT SG <code>sg-067d077ce5e5c0830</code> 开放 TCP <code>53239</code></td>
+          <td>VPC/SG/Subnet 本身通常不收费；公网 IPv4、NAT、流量等收费。当前未发现 NAT Gateway。Cost Explorer VPC：<code>$0.00</code>。</td>
+          <td><a href="https://ap-southeast-6.console.aws.amazon.com/vpcconsole/home?region=ap-southeast-6#vpcs:">打开 VPC</a></td>
+        </tr>
+        <tr>
+          <td><strong>AWS IAM / OIDC</strong></td>
+          <td><code>global</code></td>
+          <td>Roles：<code>gardenos-test-task</code>、<code>gardenos-test-task-execution</code>、<code>gardenos-test-github-actions</code>、<code>AWSServiceRoleForECS</code>；OIDC：GitHub Actions</td>
+          <td><span class="pill">通常无直接费用</span>；关联服务调用可能收费。</td>
+          <td><a href="https://us-east-1.console.aws.amazon.com/iam/home#/roles">打开 IAM</a></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>账单里出现但当前未发现活跃资源</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>服务</th>
+          <th>Region</th>
+          <th>当前检查结果</th>
+          <th>收费</th>
+          <th>管理地址</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>AWS Data Transfer</td>
+          <td>global / regional</td>
+          <td>账单维度，不是单独资源；来自 ALB、ECS、EC2、RDS 等网络流量。</td>
+          <td>Cost Explorer：<code>-$0.0000954821</code>，可能是抵扣或账单调整。</td>
+          <td><a href="https://us-east-1.console.aws.amazon.com/costmanagement/home#/cost-explorer">打开 Cost Explorer</a></td>
+        </tr>
+        <tr>
+          <td>Amazon S3</td>
+          <td>global</td>
+          <td>当前账号未列出 S3 bucket。</td>
+          <td>Cost Explorer：<code>$0.0000000091</code>。</td>
+          <td><a href="https://s3.console.aws.amazon.com/s3/home">打开 S3</a></td>
+        </tr>
+        <tr>
+          <td>AWS Glue / SNS / SQS / KMS</td>
+          <td><code>ap-southeast-6</code> / global</td>
+          <td>当前检查未发现 Glue database/job、SNS topic、SQS queue；KMS 未展开客户自管 key。</td>
+          <td>Cost Explorer 对这些服务显示 <code>$0.00</code>。</td>
+          <td><a href="https://us-east-1.console.aws.amazon.com/costmanagement/home#/cost-explorer">查看账单明细</a></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>直接访问地址</h2>
+    <table>
+      <tbody>
+        <tr>
+          <th>Web 应用</th>
+          <td><a href="http://gardenos-test-1275568806.ap-southeast-6.elb.amazonaws.com">http://gardenos-test-1275568806.ap-southeast-6.elb.amazonaws.com</a></td>
+        </tr>
+        <tr>
+          <th>Health Check</th>
+          <td><a href="http://gardenos-test-1275568806.ap-southeast-6.elb.amazonaws.com/api/health">/api/health</a></td>
+        </tr>
+        <tr>
+          <th>机器人 MQTT</th>
+          <td><code>MQTT Address: 3.103.181.148</code>，<code>MQTT Port: 53239</code></td>
+        </tr>
+      </tbody>
+    </table>
+  </main>
+</body>
+</html>

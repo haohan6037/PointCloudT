@@ -184,6 +184,9 @@ After deployment, fill this table from Terraform outputs and AWS console:
 | Network | ALB security group | `ap-southeast-6` | `sg-06291e4f28d21327f` | EC2 console | `terraform destroy` |
 | Network | App security group | `ap-southeast-6` | `sg-0c852148e525cf93f` | EC2 console | `terraform destroy` |
 | Network | Public subnets used | `ap-southeast-6` | `subnet-025abbecd471368c5`, `subnet-06d3660bc3f5e2b10` | Existing VPC subnets | Managed separately |
+| MQTT broker | EC2 Mosquitto broker | `ap-southeast-6` | `i-07ee81ca7a5d2e5e5` | `3.103.181.148:53239` | Terminate EC2 instance, release Elastic IP, delete broker SG |
+| MQTT broker | Elastic IP | `ap-southeast-6` | `eipalloc-073a1eb8cb28ea26f` | `3.103.181.148` | Release after broker shutdown |
+| MQTT broker | Broker security group | `ap-southeast-6` | `sg-067d077ce5e5c0830` | TCP `53239` from `0.0.0.0/0` | Delete after broker shutdown |
 | Database | Existing RDS | `ap-southeast-6` | `mygardenostestdb` | `mygardenostestdb.cno2oku4ynd8.ap-southeast-6.rds.amazonaws.com:5432` | Managed separately |
 | Database access | RDS SG ingress rule | `ap-southeast-6` | App SG to `sg-02416889752ccd804:5432` | Security group rule | `terraform destroy` removes app-created rule |
 | Secret | Existing `Test_DB` | `ap-southeast-6` | `Test_DB` | `arn:aws:secretsmanager:ap-southeast-6:133946907310:secret:Test_DB-FCSorp` | Managed separately |
@@ -197,6 +200,47 @@ GET /api/health -> {"ok":true,"mode":"postgres","databaseEnabled":true,"error":n
 ECS service -> ACTIVE, desired 1, running 1, pending 0
 Target group -> one healthy active target; old replaced target may briefly show draining after deployment
 ```
+
+## MQTT Broker: 2026-06-21
+
+Railway MQTT is being replaced by an AWS-hosted Mosquitto broker. The robot-facing MQTT settings are:
+
+```text
+MQTT Address: 3.103.181.148
+MQTT Port: 53239
+```
+
+Runtime details:
+
+| Item | Value |
+| --- | --- |
+| Broker type | EC2 `t3.nano` running Mosquitto |
+| Instance ID | `i-07ee81ca7a5d2e5e5` |
+| Elastic IP | `3.103.181.148` |
+| Allocation ID | `eipalloc-073a1eb8cb28ea26f` |
+| Subnet | `subnet-025abbecd471368c5` |
+| Private IP | `10.0.3.93` |
+| Security group | `sg-067d077ce5e5c0830` |
+| MQTT port | `53239` |
+| Auth/TLS | Anonymous/no TLS for robot compatibility during test migration |
+| ECS app task definition | `gardenos-test:7` |
+| ECS MQTT env | `MQTT_HOST=3.103.181.148`, `MQTT_PORT=53239`, `MQTT_MONITOR_ENABLED=1` |
+
+Verification:
+
+```text
+Broker TCP check -> 3.103.181.148:53239 reachable
+MQTT publish/subscribe on HeartBeat -> ok
+GET /api/health -> {"ok":true,"mode":"postgres","databaseEnabled":true,"error":null}
+GET /api/mqtt/status -> host=3.103.181.148, port=53239, connected=true, writerStarted=true
+End-to-end HeartBeat publish -> stored in mqtt_messages as robotId AWS-END2END-c205d925
+```
+
+Security note:
+
+- The broker is public on TCP `53239` so robots on mobile networks can connect with only address/port.
+- Do not publish robot commands from platform management without a separate safety design.
+- Add username/password or IP restrictions later if the robot firmware supports it.
 
 Frontend login note:
 

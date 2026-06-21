@@ -48,8 +48,8 @@ class PlatformMqttMonitor:
         ]
         return {
             "enabled": os.getenv("MQTT_MONITOR_ENABLED", "1") == "1",
-            "host": os.getenv("MQTT_HOST", "nozomi.proxy.rlwy.net"),
-            "port": int(os.getenv("MQTT_PORT", "53239")),
+            "host": os.getenv("MQTT_HOST", "").strip(),
+            "port": self._mqtt_port(),
             "username": os.getenv("MQTT_USERNAME", ""),
             "topics": topics,
             "queueMaxSize": self._queue.maxsize,
@@ -79,6 +79,9 @@ class PlatformMqttMonitor:
         settings = self.settings()
         if not settings["enabled"]:
             self._last_error = "MQTT monitor disabled by MQTT_MONITOR_ENABLED=0"
+            return False
+        if not settings["host"] or not settings["port"]:
+            self._last_error = "MQTT_HOST and MQTT_PORT must be configured before MQTT monitor starts"
             return False
         if mqtt is None:
             self._last_error = "paho-mqtt is not installed"
@@ -118,6 +121,16 @@ class PlatformMqttMonitor:
             self._client = client
             self._started = True
             return True
+
+    @staticmethod
+    def _mqtt_port() -> int | None:
+        value = os.getenv("MQTT_PORT", "").strip()
+        if not value:
+            return None
+        try:
+            return int(value)
+        except ValueError:
+            return None
 
     def record_received_message(self, topic: str, payload: str, source: str = "mqtt") -> bool:
         """Queue a received MQTT message without blocking the MQTT callback / 入队即返回."""

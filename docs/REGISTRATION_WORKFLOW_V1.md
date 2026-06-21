@@ -6,8 +6,34 @@ Align pointcloud top-view local XY coordinates with Auckland Council NZTM (EPSG:
 
 ## Files
 
+- LAS CRS workflow: [LAS_EPSG_COORDINATE_WORKFLOW_V1.md](/Users/happyfamily/MyProject/PointCloudTT/docs/LAS_EPSG_COORDINATE_WORKFLOW_V1.md)
 - Click tool: [registration_lab.html](/Users/happyfamily/MyProject/PointCloudTT/docs/registration_lab.html)
 - Transform solver: [fit_similarity_transform.py](/Users/happyfamily/MyProject/PointCloudTT/scripts/fit_similarity_transform.py)
+
+## Step 0: Identify LAS source CRS
+
+Before collecting manual registration points, identify the LAS source coordinate system.
+
+Rules:
+
+1. Read LAS header with `laspy`.
+2. Prefer `las.header.parse_crs()`.
+3. If the file has no CRS, use the project fallback `EPSG:32760` (`WGS84 / UTM Zone 60S`) and record that fallback was used.
+4. Convert the LAS center to `EPSG:4326` with `pyproj` and `always_xy=True`.
+5. Open the Google Maps URL and confirm the location is near the expected property.
+
+Reference code:
+
+```python
+from pyproj import CRS, Transformer
+
+source_crs = las.header.parse_crs() or CRS.from_epsg(32760)
+transformer = Transformer.from_crs(source_crs, CRS.from_epsg(4326), always_xy=True)
+lon, lat = transformer.transform(center_x, center_y)
+google_maps_url = f"https://www.google.com/maps?q={lat},{lon}"
+```
+
+Do not treat LAS `x/y` as latitude/longitude.
 
 ## Step 1: Collect control-point pairs in browser
 

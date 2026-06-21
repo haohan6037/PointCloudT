@@ -190,6 +190,24 @@ class TestMqttMonitor:
         assert "queueDepth" in data
         assert "rawLogDir" in data
 
+    def test_monitor_requires_explicit_mqtt_host_and_port(self, monkeypatch):
+        from mqtt_monitor import PlatformMqttMonitor
+
+        class FakeService:
+            store = None
+
+        monkeypatch.delenv("MQTT_HOST", raising=False)
+        monkeypatch.delenv("MQTT_PORT", raising=False)
+        monkeypatch.setenv("MQTT_MONITOR_ENABLED", "1")
+
+        monitor = PlatformMqttMonitor(FakeService())
+
+        assert monitor.start() is False
+        status = monitor.status()
+        assert status["host"] == ""
+        assert status["port"] is None
+        assert "MQTT_HOST and MQTT_PORT" in status["lastError"]
+
     def test_monitor_writes_raw_ndjson_and_batches(self, tmp_path, monkeypatch):
         from mqtt_monitor import PlatformMqttMonitor
 
