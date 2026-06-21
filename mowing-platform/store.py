@@ -327,6 +327,18 @@ class InMemoryStore:
         order["activity"] = [activity_entry(f"{worker_name}{stage_labels[payload.stage]}：{note}"), *order["activity"]]
         return order
 
+    def append_order_photos(self, order_id: str, photo_urls: list[str], note: str = "") -> dict[str, Any]:
+        """Append evidence photos to an order / 向订单追加现场证据照片."""
+        order = self._find_order(order_id)
+        if not photo_urls:
+            raise HTTPException(status_code=400, detail="At least one photo is required")
+        order.setdefault("photos", [])
+        order["photos"].extend(photo_urls)
+        order["updatedAt"] = timestamp()
+        note_text = f"：{note.strip()}" if note.strip() else ""
+        order["activity"] = [activity_entry(f"服务商上传现场照片 {len(photo_urls)} 张{note_text}。"), *order["activity"]]
+        return order
+
     def submit_quality_review(self, order_id: str, payload: QualityReviewPayload) -> dict[str, Any]:
         order = self._find_order(order_id)
         note = payload.note.strip() or "未填写审核说明。"
@@ -1522,6 +1534,34 @@ class PostgresStore:
                     where id = %s
                     """,
                     (json.dumps(activity, ensure_ascii=False), order_id),
+                )
+            conn.commit()
+        return self.get_order(order_id)
+
+    def append_order_photos(self, order_id: str, photo_urls: list[str], note: str = "") -> dict[str, Any]:
+        """Append evidence photos to an order / 向订单追加现场证据照片."""
+        if not photo_urls:
+            raise HTTPException(status_code=400, detail="At least one photo is required")
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute("select photos_json, activity_json from mowing_orders where id = %s", (order_id,))
+                row = cur.fetchone()
+                if row is None:
+                    raise HTTPException(status_code=404, detail="Order not found")
+                photos = self._decode_json_value(row[0])
+                activity = self._decode_json_value(row[1])
+                photos.extend(photo_urls)
+                note_text = f"：{note.strip()}" if note.strip() else ""
+                activity.insert(0, activity_entry(f"服务商上传现场照片 {len(photo_urls)} 张{note_text}。"))
+                cur.execute(
+                    """
+                    update mowing_orders
+                    set photos_json = %s,
+                        activity_json = %s,
+                        updated_at = now()
+                    where id = %s
+                    """,
+                    (json.dumps(photos, ensure_ascii=False), json.dumps(activity, ensure_ascii=False), order_id),
                 )
             conn.commit()
         return self.get_order(order_id)

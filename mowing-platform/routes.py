@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import os
+import re
+import uuid
 from typing import Any, Optional
 from urllib.parse import quote, urlencode
 
@@ -125,6 +127,8 @@ def create_app() -> FastAPI:
 service = PlatformService()
 mqtt_monitor = PlatformMqttMonitor(service)
 app = create_app()
+UPLOAD_DIR = ROOT / "uploads"
+UPLOAD_DIR.mkdir(exist_ok=True)
 
 
 @app.on_event("startup")
@@ -376,6 +380,31 @@ def _require_provider_order(order_id: str, email: str) -> tuple[dict[str, Any], 
     return user, order, worker
 
 
+def _safe_upload_filename(filename: str) -> str:
+    """Sanitize user-supplied upload filename / 清理上传文件名."""
+    base = os.path.basename(filename or "upload")
+    safe = re.sub(r"[^A-Za-z0-9._-]+", "_", base).strip("._")
+    return safe or "upload"
+
+
+async def _save_provider_photos(order_id: str, photos: list[UploadFile]) -> list[str]:
+    """Save provider evidence photos / 保存服务商现场证据照片."""
+    dest_dir = UPLOAD_DIR / "provider" / order_id
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    saved: list[str] = []
+    for photo in photos:
+        if not photo.filename:
+            continue
+        content = await photo.read()
+        if not content:
+            continue
+        name = f"{uuid.uuid4().hex[:12]}-{_safe_upload_filename(photo.filename)}"
+        dest = dest_dir / name
+        dest.write_bytes(content)
+        saved.append(f"/mowing-platform/uploads/provider/{order_id}/{name}")
+    return saved
+
+
 @app.get("/api/provider/workbench")
 def provider_workbench(email: str = "") -> dict[str, Any]:
     """Provider-visible orders / 服务商可见订单."""
@@ -442,6 +471,22 @@ def provider_submit_completion(order_id: str, payload: ProviderActionPayload) ->
     return {"order": order, **provider_workbench(payload.email)}
 
 
+@app.post("/api/provider/orders/{order_id}/evidence")
+async def provider_upload_evidence(
+    order_id: str,
+    email: str = Form(...),
+    note: str = Form(""),
+    photos: list[UploadFile] = File(default_factory=list),
+) -> dict[str, Any]:
+    """Provider uploads service evidence photos / 服务商上传现场证据照片."""
+    _require_provider_order(order_id, email)
+    photo_urls = await _save_provider_photos(order_id, photos)
+    if not photo_urls:
+        raise HTTPException(status_code=400, detail="At least one photo is required")
+    order = service.store.append_order_photos(order_id, photo_urls, note)
+    return {"order": order, "photos": photo_urls, **provider_workbench(email)}
+
+
 @app.post("/api/provider/orders/{order_id}/exception")
 def provider_report_exception(order_id: str, payload: ProviderActionPayload) -> dict[str, Any]:
     """Provider reports an exception / 服务商上报异常."""
@@ -483,10 +528,6 @@ def address_reverse_geocode(lat: float, lng: float) -> dict[str, Any]:
 # ═══════════════════════════════════════════════════════════════════════
 # Customer-facing API / 用户端 API
 # ═══════════════════════════════════════════════════════════════════════
-
-UPLOAD_DIR = ROOT / "uploads"
-UPLOAD_DIR.mkdir(exist_ok=True)
-
 
 @app.post("/api/customer/orders")
 async def customer_create_order(

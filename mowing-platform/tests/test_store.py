@@ -326,6 +326,15 @@ class TestServiceLog:
         )
         assert "到场签到" in order["activity"][0]
 
+    def test_append_order_photos(self, store):
+        order = store.append_order_photos(
+            "MOW-1003",
+            ["/mowing-platform/uploads/provider/MOW-1003/evidence.jpg"],
+            "服务前照片",
+        )
+        assert "/mowing-platform/uploads/provider/MOW-1003/evidence.jpg" in order["photos"]
+        assert "上传现场照片" in order["activity"][0]
+
 
 # ── Operations tag / 运营标记 ─────────────────────────────────────────
 

@@ -429,6 +429,15 @@ class TestProviderWorkbench:
         assert resp.json()["order"]["status"] == "in_service"
 
         resp = client.post(
+            f"/api/provider/orders/{order_id}/evidence",
+            data={"email": email, "note": "服务前照片"},
+            files=[("photos", ("before.jpg", b"fake image bytes", "image/jpeg"))],
+        )
+        assert resp.status_code == 200
+        evidence_order = resp.json()["order"]
+        assert any("/mowing-platform/uploads/provider/" in item for item in evidence_order["photos"])
+
+        resp = client.post(
             f"/api/provider/orders/{order_id}/complete",
             json={"email": email, "note": "服务完成，照片已回传"},
         )

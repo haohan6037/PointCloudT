@@ -133,11 +133,16 @@
             <div><span>草坪情况</span>${escapeHtml(order.condition)}</div>
           </div>
           <textarea class="provider-note" id="providerNote-${order.id}" placeholder="现场说明、到场备注、完工说明或异常描述"></textarea>
+          <input id="providerPhotos-${order.id}" type="file" accept="image/*" multiple style="margin-top:8px;width:100%;" />
+          <div class="provider-meta">
+            <div><span>证据照片</span>${(order.photos || []).length} 张</div>
+          </div>
           <div class="provider-actions">
             ${order.status === "assigned" ? `<button class="btn btn-primary" data-provider-action="accept" data-order-id="${order.id}">接单</button>` : ""}
             ${["assigned", "accepted_by_worker"].includes(order.status) ? `<button class="btn btn-secondary" data-provider-action="reject" data-order-id="${order.id}">拒单</button>` : ""}
             ${["assigned", "accepted_by_worker"].includes(order.status) ? `<button class="btn btn-primary" data-provider-action="arrival" data-order-id="${order.id}">到场开工</button>` : ""}
             ${order.status === "in_service" ? `<button class="btn btn-secondary" data-provider-action="log" data-order-id="${order.id}">记录服务</button>` : ""}
+            ${["accepted_by_worker", "in_service", "pending_quality_review"].includes(order.status) ? `<button class="btn btn-secondary" data-provider-action="evidence" data-order-id="${order.id}">上传照片</button>` : ""}
             ${order.status === "in_service" ? `<button class="btn btn-primary" data-provider-action="complete" data-order-id="${order.id}">提交完工</button>` : ""}
             ${!["completed", "pending_quality_review"].includes(order.status) ? `<button class="btn btn-secondary" data-provider-action="exception" data-order-id="${order.id}">上报异常</button>` : ""}
           </div>
@@ -156,6 +161,25 @@
 
     async function runProviderAction(action, orderId) {
       const note = document.getElementById(`providerNote-${orderId}`)?.value.trim() || "";
+      if (action === "evidence") {
+        const input = document.getElementById(`providerPhotos-${orderId}`);
+        if (!input?.files?.length) {
+          alert("请先选择现场照片。");
+          return;
+        }
+        const form = new FormData();
+        form.append("email", providerEmail);
+        form.append("note", note);
+        Array.from(input.files).forEach((file) => form.append("photos", file));
+        const resp = await fetch(`/api/provider/orders/${orderId}/evidence`, {
+          method: "POST",
+          body: form,
+        });
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.detail || "上传失败");
+        await loadProviderWorkbench();
+        return;
+      }
       const body = { email: providerEmail, note };
       let url = `/api/provider/orders/${orderId}/${action}`;
       if (action === "log") {

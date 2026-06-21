@@ -268,13 +268,14 @@ Completed or mostly functional:
 - AWS test deployment documentation and Terraform scaffold.
 - Admin MQTT monitor view for robot/broker messages. MQTT callback records to a bounded in-memory queue; a background writer appends raw hourly NDJSON under `mowing-platform/data/mqtt-raw/` and batch-inserts analysis rows into `mqtt_messages`.
 - Service-provider portal first real workbench: linked by worker email, shows provider-assigned active orders, and supports accept, reject, arrival/start, service log, exception report, and completion submission.
+- Service-provider evidence upload: provider-assigned orders can receive现场照片 through `/api/provider/orders/{order_id}/evidence`, stored under `mowing-platform/uploads/provider/<order-id>/` and appended to order `photos`.
 - Manual business-closure payment metadata: completed orders can record payment status, payment method, payment received time, and payment note alongside settlement fields.
 - MQTT vendor integration standard `docs/MQTT_VENDOR_INTEGRATION_STANDARD_V1.md` defines the current monitor-only topic/data contract and manufacturer questions while keeping command publishing out of scope.
 
 Known gaps:
 
 - Production-grade Clerk token verification is not implemented server-side.
-- Service-provider portal still needs production-grade photo/evidence upload, richer earnings display, and real provider onboarding, but it is no longer only a skeleton.
+- Service-provider portal still needs richer earnings display and real provider onboarding. Evidence upload is functional, but production file size/type scanning and managed object storage remain later hardening work.
 - Payment/settlement automation is not implemented.
 - Robot maintenance workflows are not phase-1 complete.
 - Geoapify/live address provider status may need re-verification when keys or restrictions change.
@@ -341,6 +342,7 @@ Expected local `/api/health` when PostgreSQL is connected:
 - Fixed the PostgreSQL customer quote confirmation gap by adding `accept_by_customer` and `reject_by_customer` to `PostgresStore`; customer quote confirmation now works beyond fallback memory mode.
 - Added `docs/MQTT_VENDOR_INTEGRATION_STANDARD_V1.md` for manufacturer MQTT alignment. The platform remains monitor/store focused and still must not publish movement commands without a separate safety design.
 - Validation: `python3 -m pytest mowing-platform/tests -q` passed 79 tests; Python compile checks and JS syntax checks passed.
+- Added service-provider evidence upload for business closure: provider workbench can upload现场照片, backend stores files under `mowing-platform/uploads/provider/<order-id>/`, appends photo URLs to the order, and records an activity timeline entry. Validation now passes 80 tests.
 
 ### 2026-06-19
 
