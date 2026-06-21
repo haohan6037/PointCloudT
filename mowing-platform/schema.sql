@@ -1,6 +1,7 @@
 create table if not exists mowing_workers (
     id text primary key,
     name text not null,
+    email text not null default '',
     area text not null,
     phone text not null default '',
     approval_status text not null default 'approved',
@@ -10,6 +11,7 @@ create table if not exists mowing_workers (
 );
 
 alter table if exists mowing_workers add column if not exists phone text not null default '';
+alter table if exists mowing_workers add column if not exists email text not null default '';
 alter table if exists mowing_workers add column if not exists approval_status text not null default 'approved';
 alter table if exists mowing_workers add column if not exists service_note text not null default '';
 alter table if exists mowing_workers add column if not exists lat double precision;
@@ -32,6 +34,10 @@ create table if not exists mowing_orders (
     price_note text not null default '',
     assigned_worker_id text references mowing_workers(id),
     actual_amount numeric(10, 2),
+    payment_status text not null default 'unpaid',
+    payment_method text not null default '',
+    payment_received_at timestamptz,
+    payment_note text not null default '',
     settlement_status text not null default 'pending',
     completion_note text not null default '',
     review_note text not null default '',
@@ -47,6 +53,10 @@ create table if not exists mowing_orders (
 );
 
 alter table if exists mowing_orders add column if not exists actual_amount numeric(10, 2);
+alter table if exists mowing_orders add column if not exists payment_status text not null default 'unpaid';
+alter table if exists mowing_orders add column if not exists payment_method text not null default '';
+alter table if exists mowing_orders add column if not exists payment_received_at timestamptz;
+alter table if exists mowing_orders add column if not exists payment_note text not null default '';
 alter table if exists mowing_orders add column if not exists settlement_status text not null default 'pending';
 alter table if exists mowing_orders add column if not exists completion_note text not null default '';
 alter table if exists mowing_orders add column if not exists review_note text not null default '';
@@ -62,6 +72,7 @@ alter table if exists mowing_orders add column if not exists internal_note text 
 
 create index if not exists idx_mowing_orders_status on mowing_orders(status);
 create index if not exists idx_mowing_orders_updated_at on mowing_orders(updated_at desc);
+create index if not exists idx_mowing_workers_email on mowing_workers(email);
 
 create table if not exists app_users (
     email text primary key,

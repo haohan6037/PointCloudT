@@ -37,6 +37,7 @@ class WorkerAvailabilityPayload(BaseModel):
 class WorkerProfilePayload(BaseModel):
     """Update worker profile / 更新师傅资料"""
     name: str = Field(min_length=1)
+    email: str = ""
     phone: str = Field(min_length=1)
     area: str = Field(min_length=1)
     approvalStatus: str = Field(min_length=1)
@@ -58,6 +59,10 @@ class OrderStatusPayload(BaseModel):
 class CompletionPayload(BaseModel):
     """Completion and settlement data / 完工与结算数据"""
     actualAmount: str = ""
+    paymentStatus: str = "unpaid"
+    paymentMethod: str = ""
+    paymentReceivedAt: str = ""
+    paymentNote: str = ""
     settlementStatus: str = Field(min_length=1)
     completionNote: str = ""
     platformShare: str = ""
@@ -154,6 +159,14 @@ class MqttMessagePayload(BaseModel):
     topic: str = Field(min_length=1)
     payload: str = Field(min_length=1)
     source: str = "manual"
+
+
+class ProviderActionPayload(BaseModel):
+    """Provider order action / 服务商订单操作"""
+    email: str = Field(min_length=5)
+    note: str = ""
+    stage: str = ""
+    issueType: str = ""
 
 
 @dataclass

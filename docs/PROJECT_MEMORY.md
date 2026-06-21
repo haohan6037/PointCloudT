@@ -267,11 +267,14 @@ Completed or mostly functional:
 - Local dev PostgreSQL startup via `start.sh`.
 - AWS test deployment documentation and Terraform scaffold.
 - Admin MQTT monitor view for robot/broker messages. MQTT callback records to a bounded in-memory queue; a background writer appends raw hourly NDJSON under `mowing-platform/data/mqtt-raw/` and batch-inserts analysis rows into `mqtt_messages`.
+- Service-provider portal first real workbench: linked by worker email, shows provider-assigned active orders, and supports accept, reject, arrival/start, service log, exception report, and completion submission.
+- Manual business-closure payment metadata: completed orders can record payment status, payment method, payment received time, and payment note alongside settlement fields.
+- MQTT vendor integration standard `docs/MQTT_VENDOR_INTEGRATION_STANDARD_V1.md` defines the current monitor-only topic/data contract and manufacturer questions while keeping command publishing out of scope.
 
 Known gaps:
 
 - Production-grade Clerk token verification is not implemented server-side.
-- Service-provider portal is still a skeleton compared with admin/customer flows.
+- Service-provider portal still needs production-grade photo/evidence upload, richer earnings display, and real provider onboarding, but it is no longer only a skeleton.
 - Payment/settlement automation is not implemented.
 - Robot maintenance workflows are not phase-1 complete.
 - Geoapify/live address provider status may need re-verification when keys or restrictions change.
@@ -327,6 +330,17 @@ Expected local `/api/health` when PostgreSQL is connected:
 ---
 
 ## Latest Progress Log
+
+### 2026-06-22
+
+- Prioritized business closure as the primary landing goal. MQTT remains standard/spec-first for vendor alignment, and point-cloud work remains functional development for later integration into the larger workflow.
+- Added worker email binding to seed data and schema so service-provider login can resolve to a worker profile.
+- Added provider workbench APIs under `/api/provider/*`: provider users can read only their assigned active orders, accept/reject, mark arrival/start, add service logs, report exceptions, and submit completion for platform quality review.
+- Replaced `/provider` skeleton with a working service-provider dashboard that reads the logged-in provider's orders and performs the above actions.
+- Added manual payment metadata to completion/archive flow: `paymentStatus`, `paymentMethod`, `paymentReceivedAt`, and `paymentNote`.
+- Fixed the PostgreSQL customer quote confirmation gap by adding `accept_by_customer` and `reject_by_customer` to `PostgresStore`; customer quote confirmation now works beyond fallback memory mode.
+- Added `docs/MQTT_VENDOR_INTEGRATION_STANDARD_V1.md` for manufacturer MQTT alignment. The platform remains monitor/store focused and still must not publish movement commands without a separate safety design.
+- Validation: `python3 -m pytest mowing-platform/tests -q` passed 79 tests; Python compile checks and JS syntax checks passed.
 
 ### 2026-06-19
 

@@ -26,6 +26,7 @@ from models import (
     OrderStatusPayload,
     OrderUpdatePayload,
     QualityReviewPayload,
+    ProviderActionPayload,
     QuotePayload,
     SessionSyncPayload,
     SendCodePayload,
@@ -341,6 +342,115 @@ def suggest_workers_for_address(payload: AddressAutocompletePayload) -> dict[str
         )
     )
     return {"workers": workers_with_distance, "geocoded": geo}
+
+
+# ── Provider workbench / 服务商工作台 ─────────────────────────────────
+
+def _require_provider_actor(email: str = "") -> tuple[dict[str, Any], dict[str, Any] | None]:
+    """Require an active server/admin user and resolve worker profile."""
+    normalized = email.strip().lower()
+    if not normalized:
+        raise HTTPException(status_code=403, detail="Provider permission required")
+    user = service.store.get_user(normalized)
+    if user is None:
+        user = service.store.sync_user_session(normalized)
+    role = user.get("role")
+    if user.get("status") != "active" or role not in {"server", "admin"}:
+        raise HTTPException(status_code=403, detail="Provider permission required")
+    worker = service.store.get_worker_by_email(normalized)
+    if role == "server" and worker is None:
+        raise HTTPException(status_code=403, detail="No worker profile linked to this email")
+    return user, worker
+
+
+def _require_provider_order(order_id: str, email: str) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any] | None]:
+    """Require provider access to one assigned order."""
+    user, worker = _require_provider_actor(email)
+    data = service.store.bootstrap()
+    order = next((item for item in data["orders"] if item["id"] == order_id), None)
+    if order is None:
+        raise HTTPException(status_code=404, detail="Order not found")
+    if user.get("role") != "admin":
+        if worker is None or order.get("assignedWorkerId") != worker["id"]:
+            raise HTTPException(status_code=403, detail="Order is not assigned to this provider")
+    return user, order, worker
+
+
+@app.get("/api/provider/workbench")
+def provider_workbench(email: str = "") -> dict[str, Any]:
+    """Provider-visible orders / 服务商可见订单."""
+    user, worker = _require_provider_actor(email)
+    if user.get("role") == "admin" and worker is None:
+        data = service.store.bootstrap()
+        orders = [
+            order for order in data["orders"]
+            if order.get("assignedWorkerId") and order.get("status") != "cancelled"
+        ]
+        return {"user": user, "worker": None, "orders": orders, "workers": data["workers"]}
+    assert worker is not None
+    return {
+        "user": user,
+        "worker": worker,
+        "orders": service.store.list_orders_for_worker(worker["id"]),
+    }
+
+
+@app.post("/api/provider/orders/{order_id}/accept")
+def provider_accept_order(order_id: str, payload: ProviderActionPayload) -> dict[str, Any]:
+    """Provider accepts assigned order / 服务商接单."""
+    _require_provider_order(order_id, payload.email)
+    service.store.accept_order(order_id)
+    note = payload.note.strip() or "服务商已确认接单，准备安排上门。"
+    order = service.store.add_service_log(order_id, ServiceLogPayload(stage="pre_visit", note=note))
+    return {"order": order, **provider_workbench(payload.email)}
+
+
+@app.post("/api/provider/orders/{order_id}/reject")
+def provider_reject_order(order_id: str, payload: ProviderActionPayload) -> dict[str, Any]:
+    """Provider rejects assigned order / 服务商拒单."""
+    _require_provider_order(order_id, payload.email)
+    order = service.store.reject_order(order_id)
+    return {"order": order, **provider_workbench(payload.email)}
+
+
+@app.post("/api/provider/orders/{order_id}/arrival")
+def provider_mark_arrival(order_id: str, payload: ProviderActionPayload) -> dict[str, Any]:
+    """Provider marks arrival/start / 服务商到场开工."""
+    _require_provider_order(order_id, payload.email)
+    service.store.update_order_status(order_id, "in_service")
+    note = payload.note.strip() or "服务商已到场并开始作业。"
+    order = service.store.add_service_log(order_id, ServiceLogPayload(stage="arrival", note=note))
+    return {"order": order, **provider_workbench(payload.email)}
+
+
+@app.post("/api/provider/orders/{order_id}/service-log")
+def provider_add_service_log(order_id: str, payload: ProviderActionPayload) -> dict[str, Any]:
+    """Provider adds a service log / 服务商添加服务记录."""
+    _require_provider_order(order_id, payload.email)
+    stage = payload.stage.strip() or "service_note"
+    order = service.store.add_service_log(order_id, ServiceLogPayload(stage=stage, note=payload.note))
+    return {"order": order, **provider_workbench(payload.email)}
+
+
+@app.post("/api/provider/orders/{order_id}/complete")
+def provider_submit_completion(order_id: str, payload: ProviderActionPayload) -> dict[str, Any]:
+    """Provider submits completion for quality review / 服务商提交完工审核."""
+    _require_provider_order(order_id, payload.email)
+    service.store.update_order_status(order_id, "pending_quality_review")
+    note = payload.note.strip() or "服务商已提交完工，等待平台质量审核。"
+    order = service.store.add_service_log(order_id, ServiceLogPayload(stage="completion_followup", note=note))
+    return {"order": order, **provider_workbench(payload.email)}
+
+
+@app.post("/api/provider/orders/{order_id}/exception")
+def provider_report_exception(order_id: str, payload: ProviderActionPayload) -> dict[str, Any]:
+    """Provider reports an exception / 服务商上报异常."""
+    _require_provider_order(order_id, payload.email)
+    order = service.store.handle_exception(
+        order_id,
+        ExceptionPayload(action="open", issueType=payload.issueType, note=payload.note),
+    )
+    return {"order": order, **provider_workbench(payload.email)}
 
 
 # ── Address services / 地址服务 ────────────────────────────────────────

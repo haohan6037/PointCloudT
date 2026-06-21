@@ -74,6 +74,8 @@ def configured_role_for_email(email: str) -> str:
         return "admin"
     if normalized in provider_emails:
         return "server"
+    if normalized in {str(worker.get("email", "")).strip().lower() for worker in WORKERS if worker.get("email")}:
+        return "server"
     return "customer"
 
 
@@ -135,6 +137,8 @@ class InMemoryStore:
         for worker in self.workers:
             if worker["id"] == worker_id:
                 worker["name"] = payload.name
+                if payload.email.strip():
+                    worker["email"] = payload.email.strip().lower()
                 worker["phone"] = payload.phone
                 worker["area"] = payload.area
                 worker["approvalStatus"] = payload.approvalStatus
@@ -187,6 +191,7 @@ class InMemoryStore:
         if order["status"] != "quoted":
             raise HTTPException(status_code=400, detail="Order must be in quoted status")
         order["status"] = "accepted_by_customer"
+        order["paymentStatus"] = "pending"
         order["updatedAt"] = timestamp()
         order["activity"] = [activity_entry("客户已确认报价，等待平台派单。"), *order["activity"]]
         return order
@@ -282,9 +287,15 @@ class InMemoryStore:
                 Decimal(payload.workerPayout)
             except Exception as exc:
                 raise HTTPException(status_code=400, detail="Invalid worker payout") from exc
+        if payload.paymentStatus not in {"unpaid", "pending", "paid", "waived"}:
+            raise HTTPException(status_code=400, detail="Unsupported payment status")
         if payload.settlementStatus not in {"pending", "settled"}:
             raise HTTPException(status_code=400, detail="Unsupported settlement status")
         order["actualAmount"] = payload.actualAmount.strip()
+        order["paymentStatus"] = payload.paymentStatus
+        order["paymentMethod"] = payload.paymentMethod.strip()
+        order["paymentReceivedAt"] = payload.paymentReceivedAt.strip()
+        order["paymentNote"] = payload.paymentNote.strip()
         order["settlementStatus"] = payload.settlementStatus
         order["completionNote"] = payload.completionNote.strip()
         order["platformShare"] = payload.platformShare.strip()
@@ -490,6 +501,18 @@ class InMemoryStore:
         users = [{**item, "role": normalize_user_role(item.get("role", "customer"))} for item in self.users.values()]
         return sorted(users, key=lambda item: (item["role"], item["email"]))
 
+    def get_worker_by_email(self, email: str) -> dict[str, Any] | None:
+        """Find a worker profile by login email / 按登录邮箱查找服务商档案."""
+        normalized = email.strip().lower()
+        return next((worker for worker in self.workers if worker.get("email", "").strip().lower() == normalized), None)
+
+    def list_orders_for_worker(self, worker_id: str) -> list[dict[str, Any]]:
+        """List active orders assigned to one worker / 查询分配给某服务商的活跃订单."""
+        return [
+            order for order in self.orders
+            if order.get("assignedWorkerId") == worker_id and order.get("status") != "cancelled"
+        ]
+
     def update_user_role(self, email: str, role: str, status: str = "active") -> dict[str, Any]:
         """Update app user role / 更新平台用户角色."""
         role = normalize_user_role(role)
@@ -579,6 +602,10 @@ class InMemoryStore:
             "priceNote": "",
             "assignedWorkerId": "",
             "actualAmount": "",
+            "paymentStatus": "unpaid",
+            "paymentMethod": "",
+            "paymentReceivedAt": "",
+            "paymentNote": "",
             "settlementStatus": "pending",
             "completionNote": "",
             "reviewNote": "",
@@ -614,6 +641,10 @@ class InMemoryStore:
             "priceNote": "",
             "assignedWorkerId": "",
             "actualAmount": "",
+            "paymentStatus": "unpaid",
+            "paymentMethod": "",
+            "paymentReceivedAt": "",
+            "paymentNote": "",
             "settlementStatus": "pending",
             "completionNote": "",
             "reviewNote": "",
@@ -750,14 +781,18 @@ class PostgresStore:
     def _upsert_seed_workers(self, cur) -> None:
         cur.executemany(
             """
-            insert into mowing_workers (id, name, area, phone, approval_status, service_note, available, lat, lng)
+            insert into mowing_workers (id, name, email, area, phone, approval_status, service_note, available, lat, lng)
             values (
-                %(id)s, %(name)s, %(area)s, %(phone)s, %(approvalStatus)s, %(serviceNote)s, %(available)s, %(lat)s, %(lng)s
+                %(id)s, %(name)s, %(email)s, %(area)s, %(phone)s, %(approvalStatus)s, %(serviceNote)s, %(available)s, %(lat)s, %(lng)s
             )
             on conflict (id) do update set
                 name = case
                     when coalesce(nullif(mowing_workers.name, ''), '') = '' then excluded.name
                     else mowing_workers.name
+                end,
+                email = case
+                    when coalesce(nullif(mowing_workers.email, ''), '') = '' then excluded.email
+                    else mowing_workers.email
                 end,
                 area = case
                     when coalesce(nullif(mowing_workers.area, ''), '') = '' then excluded.area
@@ -788,13 +823,15 @@ class PostgresStore:
                 insert into mowing_orders (
                     id, user_name, phone, address, service_type, requested_time, lawn_size,
                     condition_note, customer_note, status, priority_level, ops_tag, quoted_price, price_note,
-                    assigned_worker_id, actual_amount, settlement_status, completion_note, review_note,
+                    assigned_worker_id, actual_amount, payment_status, payment_method, payment_received_at, payment_note,
+                    settlement_status, completion_note, review_note,
                     exception_type, exception_note, exception_resolution,
                     platform_share, worker_payout, settled_at, updated_at, photos_json, activity_json
                 ) values (
                     %(id)s, %(user)s, %(phone)s, %(address)s, %(serviceType)s, %(requestedTime)s,
                     %(lawnSize)s, %(condition)s, %(note)s, %(status)s, %(priorityLevel)s, %(opsTag)s, %(quoted_price)s, %(priceNote)s,
-                    %(assignedWorkerId)s, %(actual_amount)s, %(settlementStatus)s, %(completionNote)s, %(reviewNote)s,
+                    %(assignedWorkerId)s, %(actual_amount)s, %(paymentStatus)s, %(paymentMethod)s, %(paymentReceivedAt)s, %(paymentNote)s,
+                    %(settlementStatus)s, %(completionNote)s, %(reviewNote)s,
                     %(exceptionType)s, %(exceptionNote)s, %(exceptionResolution)s,
                     %(platform_share)s, %(worker_payout)s, %(settledAt)s, %(updatedAt)s, %(photos_json)s, %(activity_json)s
                 )
@@ -804,6 +841,7 @@ class PostgresStore:
                     "quoted_price": Decimal(order["price"]) if order["price"] else None,
                     "assignedWorkerId": order["assignedWorkerId"] or None,
                     "actual_amount": Decimal(order["actualAmount"]) if order["actualAmount"] else None,
+                    "paymentReceivedAt": order.get("paymentReceivedAt") or None,
                     "platform_share": Decimal(order["platformShare"]) if order["platformShare"] else None,
                     "worker_payout": Decimal(order["workerPayout"]) if order["workerPayout"] else None,
                     "settledAt": order["settledAt"] or None,
@@ -819,7 +857,8 @@ class PostgresStore:
                     """
                     select id, user_name, phone, address, service_type, requested_time, lawn_size,
                            condition_note, customer_note, status, priority_level, ops_tag, quoted_price, price_note,
-                           assigned_worker_id, actual_amount, settlement_status, completion_note, review_note,
+                           assigned_worker_id, actual_amount, payment_status, payment_method, payment_received_at, payment_note,
+                           settlement_status, completion_note, review_note,
                            exception_type, exception_note, exception_resolution,
                            platform_share, worker_payout, settled_at, updated_at, photos_json, activity_json
                     from mowing_orders
@@ -829,7 +868,7 @@ class PostgresStore:
                 orders = [self._row_to_order(row) for row in cur.fetchall()]
                 cur.execute(
                     """
-                    select id, name, area, phone, approval_status, service_note, available, lat, lng
+                    select id, name, email, area, phone, approval_status, service_note, available, lat, lng
                     from mowing_workers
                     order by id
                     """
@@ -845,7 +884,7 @@ class PostgresStore:
                     update mowing_workers
                     set available = %s
                     where id = %s
-                    returning id, name, area, phone, approval_status, service_note, available, lat, lng
+                    returning id, name, email, area, phone, approval_status, service_note, available, lat, lng
                     """,
                     (available, worker_id),
                 )
@@ -863,17 +902,20 @@ class PostgresStore:
                     update mowing_workers
                     set name = %s,
                         phone = %s,
+                        email = case when %s <> '' then %s else email end,
                         area = %s,
                         approval_status = %s,
                         service_note = %s,
                         lat = coalesce(%s, lat),
                         lng = coalesce(%s, lng)
                     where id = %s
-                    returning id, name, area, phone, approval_status, service_note, available, lat, lng
+                    returning id, name, email, area, phone, approval_status, service_note, available, lat, lng
                     """,
                     (
                         payload.name,
                         payload.phone,
+                        payload.email.strip().lower(),
+                        payload.email.strip().lower(),
                         payload.area,
                         payload.approvalStatus,
                         payload.serviceNote,
@@ -928,8 +970,8 @@ class PostgresStore:
         return f"MOW-{next_number}"
 
     def _row_to_order(self, row: tuple[Any, ...]) -> dict[str, Any]:
-        photos = self._decode_json_value(row[26])
-        activity = self._decode_json_value(row[27])
+        photos = self._decode_json_value(row[30])
+        activity = self._decode_json_value(row[31])
         return {
             "id": row[0],
             "user": row[1],
@@ -947,16 +989,20 @@ class PostgresStore:
             "priceNote": row[13] or "",
             "assignedWorkerId": row[14] or "",
             "actualAmount": str(row[15]) if row[15] is not None else "",
-            "settlementStatus": row[16] or "pending",
-            "completionNote": row[17] or "",
-            "reviewNote": row[18] or "",
-            "exceptionType": row[19] or "",
-            "exceptionNote": row[20] or "",
-            "exceptionResolution": row[21] or "",
-            "platformShare": str(row[22]) if row[22] is not None else "",
-            "workerPayout": str(row[23]) if row[23] is not None else "",
-            "settledAt": row[24].strftime("%Y-%m-%d %H:%M") if row[24] is not None else "",
-            "updatedAt": row[25].strftime("%Y-%m-%d %H:%M"),
+            "paymentStatus": row[16] or "unpaid",
+            "paymentMethod": row[17] or "",
+            "paymentReceivedAt": row[18].strftime("%Y-%m-%d %H:%M") if row[18] is not None else "",
+            "paymentNote": row[19] or "",
+            "settlementStatus": row[20] or "pending",
+            "completionNote": row[21] or "",
+            "reviewNote": row[22] or "",
+            "exceptionType": row[23] or "",
+            "exceptionNote": row[24] or "",
+            "exceptionResolution": row[25] or "",
+            "platformShare": str(row[26]) if row[26] is not None else "",
+            "workerPayout": str(row[27]) if row[27] is not None else "",
+            "settledAt": row[28].strftime("%Y-%m-%d %H:%M") if row[28] is not None else "",
+            "updatedAt": row[29].strftime("%Y-%m-%d %H:%M"),
             "photos": photos,
             "activity": activity,
         }
@@ -966,13 +1012,14 @@ class PostgresStore:
         return {
             "id": row[0],
             "name": row[1],
-            "area": row[2],
-            "phone": row[3] or "",
-            "approvalStatus": row[4] or "approved",
-            "serviceNote": row[5] or "",
-            "available": row[6],
-            "lat": float(row[7]) if len(row) > 7 and row[7] is not None else None,
-            "lng": float(row[8]) if len(row) > 8 and row[8] is not None else None,
+            "email": row[2] or "",
+            "area": row[3],
+            "phone": row[4] or "",
+            "approvalStatus": row[5] or "approved",
+            "serviceNote": row[6] or "",
+            "available": row[7],
+            "lat": float(row[8]) if len(row) > 8 and row[8] is not None else None,
+            "lng": float(row[9]) if len(row) > 9 and row[9] is not None else None,
         }
 
     def save_quote(self, order_id: str, price: str, price_note: str) -> dict[str, Any]:
@@ -1018,6 +1065,58 @@ class PostgresStore:
                     where id = %s
                     """,
                     (worker_id, json.dumps(activity, ensure_ascii=False), order_id),
+                )
+            conn.commit()
+        return self.get_order(order_id)
+
+    def accept_by_customer(self, order_id: str) -> dict[str, Any]:
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute("select activity_json, status from mowing_orders where id = %s", (order_id,))
+                row = cur.fetchone()
+                if row is None:
+                    raise HTTPException(status_code=404, detail="Order not found")
+                if row[1] != "quoted":
+                    raise HTTPException(status_code=400, detail="Order must be in quoted status")
+                activity = self._decode_json_value(row[0])
+                activity.insert(0, activity_entry("客户已确认报价，等待平台派单。"))
+                cur.execute(
+                    """
+                    update mowing_orders
+                    set status = 'accepted_by_customer',
+                        payment_status = 'pending',
+                        updated_at = now(),
+                        activity_json = %s
+                    where id = %s
+                    """,
+                    (json.dumps(activity, ensure_ascii=False), order_id),
+                )
+            conn.commit()
+        return self.get_order(order_id)
+
+    def reject_by_customer(self, order_id: str) -> dict[str, Any]:
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute("select activity_json, status from mowing_orders where id = %s", (order_id,))
+                row = cur.fetchone()
+                if row is None:
+                    raise HTTPException(status_code=404, detail="Order not found")
+                if row[1] != "quoted":
+                    raise HTTPException(status_code=400, detail="Order must be in quoted status")
+                activity = self._decode_json_value(row[0])
+                activity.insert(0, activity_entry("客户拒绝报价，订单回到待平台确认。"))
+                cur.execute(
+                    """
+                    update mowing_orders
+                    set status = 'pending_review',
+                        quoted_price = null,
+                        price_note = '',
+                        payment_status = 'unpaid',
+                        updated_at = now(),
+                        activity_json = %s
+                    where id = %s
+                    """,
+                    (json.dumps(activity, ensure_ascii=False), order_id),
                 )
             conn.commit()
         return self.get_order(order_id)
@@ -1330,6 +1429,8 @@ class PostgresStore:
                 raise HTTPException(status_code=400, detail="Invalid worker payout") from exc
         else:
             worker_payout = None
+        if payload.paymentStatus not in {"unpaid", "pending", "paid", "waived"}:
+            raise HTTPException(status_code=400, detail="Unsupported payment status")
         if payload.settlementStatus not in {"pending", "settled"}:
             raise HTTPException(status_code=400, detail="Unsupported settlement status")
         with self._connect() as conn:
@@ -1349,6 +1450,14 @@ class PostgresStore:
                     """
                     update mowing_orders
                     set actual_amount = %s,
+                        payment_status = %s,
+                        payment_method = %s,
+                        payment_received_at = case
+                            when %s <> '' then %s::timestamptz
+                            when %s = 'paid' and payment_received_at is null then now()
+                            else payment_received_at
+                        end,
+                        payment_note = %s,
                         settlement_status = %s,
                         completion_note = %s,
                         platform_share = %s,
@@ -1360,6 +1469,12 @@ class PostgresStore:
                     """,
                     (
                         actual_amount,
+                        payload.paymentStatus,
+                        payload.paymentMethod.strip(),
+                        payload.paymentReceivedAt.strip(),
+                        payload.paymentReceivedAt.strip(),
+                        payload.paymentStatus,
+                        payload.paymentNote.strip(),
                         payload.settlementStatus,
                         payload.completionNote.strip(),
                         platform_share,
@@ -1629,6 +1744,42 @@ class PostgresStore:
                 rows = cur.fetchall()
         return [self._row_to_app_user(row) for row in rows]
 
+    def get_worker_by_email(self, email: str) -> dict[str, Any] | None:
+        """Find a worker profile by login email / 按登录邮箱查找服务商档案."""
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    select id, name, email, area, phone, approval_status, service_note, available, lat, lng
+                    from mowing_workers
+                    where lower(email) = lower(%s)
+                    """,
+                    (email.strip(),),
+                )
+                row = cur.fetchone()
+        return self._row_to_worker(row) if row else None
+
+    def list_orders_for_worker(self, worker_id: str) -> list[dict[str, Any]]:
+        """List active orders assigned to one worker / 查询分配给某服务商的活跃订单."""
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    select id, user_name, phone, address, service_type, requested_time, lawn_size,
+                           condition_note, customer_note, status, priority_level, ops_tag, quoted_price, price_note,
+                           assigned_worker_id, actual_amount, payment_status, payment_method, payment_received_at, payment_note,
+                           settlement_status, completion_note, review_note,
+                           exception_type, exception_note, exception_resolution,
+                           platform_share, worker_payout, settled_at, updated_at, photos_json, activity_json
+                    from mowing_orders
+                    where assigned_worker_id = %s and status <> 'cancelled'
+                    order by updated_at desc, id asc
+                    """,
+                    (worker_id,),
+                )
+                rows = cur.fetchall()
+        return [self._row_to_order(row) for row in rows]
+
     def update_user_role(self, email: str, role: str, status: str = "active") -> dict[str, Any]:
         """Update app user role / 更新平台用户角色."""
         role = normalize_user_role(role)
@@ -1784,6 +1935,10 @@ class PostgresStore:
             "priceNote": "",
             "assignedWorkerId": "",
             "actualAmount": "",
+            "paymentStatus": "unpaid",
+            "paymentMethod": "",
+            "paymentReceivedAt": "",
+            "paymentNote": "",
             "settlementStatus": "pending",
             "completionNote": "",
             "reviewNote": "",
@@ -1804,13 +1959,15 @@ class PostgresStore:
                     insert into mowing_orders (
                         id, user_name, phone, address, service_type, requested_time, lawn_size,
                         condition_note, customer_note, status, priority_level, ops_tag, quoted_price, price_note,
-                        assigned_worker_id, actual_amount, settlement_status, completion_note, review_note,
+                        assigned_worker_id, actual_amount, payment_status, payment_method, payment_received_at, payment_note,
+                        settlement_status, completion_note, review_note,
                         exception_type, exception_note, exception_resolution,
                         platform_share, worker_payout, settled_at, updated_at, photos_json, activity_json
                     ) values (
                         %(id)s, %(user)s, %(phone)s, %(address)s, %(serviceType)s, %(requestedTime)s,
                         %(lawnSize)s, %(condition)s, %(note)s, %(status)s, %(priorityLevel)s, %(opsTag)s, null, %(priceNote)s,
-                        %(assignedWorkerId)s, %(actual_amount)s, %(settlementStatus)s, %(completionNote)s, %(reviewNote)s,
+                        %(assignedWorkerId)s, %(actual_amount)s, %(paymentStatus)s, %(paymentMethod)s, %(paymentReceivedAt)s, %(paymentNote)s,
+                        %(settlementStatus)s, %(completionNote)s, %(reviewNote)s,
                         %(exceptionType)s, %(exceptionNote)s, %(exceptionResolution)s,
                         %(platform_share)s, %(worker_payout)s, %(settledAt)s, %(updatedAt)s, %(photos_json)s, %(activity_json)s
                     )
@@ -1819,6 +1976,7 @@ class PostgresStore:
                         **order,
                         "assignedWorkerId": None,
                         "actual_amount": None,
+                        "paymentReceivedAt": None,
                         "platform_share": None,
                         "worker_payout": None,
                         "settledAt": None,
@@ -1847,6 +2005,10 @@ class PostgresStore:
             "priceNote": "",
             "assignedWorkerId": "",
             "actualAmount": "",
+            "paymentStatus": "unpaid",
+            "paymentMethod": "",
+            "paymentReceivedAt": "",
+            "paymentNote": "",
             "settlementStatus": "pending",
             "completionNote": "",
             "reviewNote": "",
@@ -1867,13 +2029,15 @@ class PostgresStore:
                     insert into mowing_orders (
                         id, user_name, phone, address, service_type, requested_time, lawn_size,
                         condition_note, customer_note, status, priority_level, ops_tag, quoted_price, price_note,
-                        assigned_worker_id, actual_amount, settlement_status, completion_note, review_note,
+                        assigned_worker_id, actual_amount, payment_status, payment_method, payment_received_at, payment_note,
+                        settlement_status, completion_note, review_note,
                         exception_type, exception_note, exception_resolution,
                         platform_share, worker_payout, settled_at, updated_at, photos_json, activity_json
                     ) values (
                         %(id)s, %(user)s, %(phone)s, %(address)s, %(serviceType)s, %(requestedTime)s,
                         %(lawnSize)s, %(condition)s, %(note)s, %(status)s, %(priorityLevel)s, %(opsTag)s, null, %(priceNote)s,
-                        null, %(actual_amount)s, %(settlementStatus)s, %(completionNote)s, %(reviewNote)s,
+                        null, %(actual_amount)s, %(paymentStatus)s, %(paymentMethod)s, %(paymentReceivedAt)s, %(paymentNote)s,
+                        %(settlementStatus)s, %(completionNote)s, %(reviewNote)s,
                         %(exceptionType)s, %(exceptionNote)s, %(exceptionResolution)s,
                         %(platform_share)s, %(worker_payout)s, %(settledAt)s, %(updatedAt)s, %(photos_json)s, %(activity_json)s
                     )
@@ -1881,6 +2045,7 @@ class PostgresStore:
                     {
                         **order,
                         "actual_amount": None,
+                        "paymentReceivedAt": None,
                         "platform_share": None,
                         "worker_payout": None,
                         "settledAt": None,
@@ -1898,7 +2063,8 @@ class PostgresStore:
                     """
                     select id, user_name, phone, address, service_type, requested_time, lawn_size,
                            condition_note, customer_note, status, priority_level, ops_tag, quoted_price, price_note,
-                           assigned_worker_id, actual_amount, settlement_status, completion_note, review_note,
+                           assigned_worker_id, actual_amount, payment_status, payment_method, payment_received_at, payment_note,
+                           settlement_status, completion_note, review_note,
                            exception_type, exception_note, exception_resolution,
                            platform_share, worker_payout, settled_at, updated_at, photos_json, activity_json
                     from mowing_orders

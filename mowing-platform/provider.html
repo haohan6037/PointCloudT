@@ -7,6 +7,15 @@
   <link rel="stylesheet" href="/mowing-platform/css/portal-theme.css" />
   <style>
     #providerLogoutBtn { margin-left: auto; }
+    .provider-toolbar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 14px; }
+    .provider-order { border: 1px solid var(--portal-line, #E6E2DA); border-radius: 8px; padding: 14px; margin-top: 12px; background: rgba(255,255,255,0.72); }
+    .provider-order header { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; margin-bottom: 10px; }
+    .provider-order h3 { margin: 0; font-size: 18px; }
+    .provider-meta { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 8px 14px; font-size: 13px; margin: 10px 0; }
+    .provider-meta span { color: var(--portal-muted, #6E7568); display: block; }
+    .provider-note { width: 100%; min-height: 66px; box-sizing: border-box; border: 1px solid var(--portal-line, #E6E2DA); border-radius: 8px; padding: 10px; font: inherit; }
+    .provider-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+    .provider-empty { padding: 18px; text-align: center; color: var(--portal-muted, #6E7568); }
   </style>
 </head>
 <body class="provider-portal">
@@ -35,22 +44,21 @@
         </div>
         <div class="card">
           <h2>当前阶段</h2>
-          <p>已完成角色分流和独立入口。下一步建议补接单列表、今日任务、服务回传和异常处理。</p>
+          <p>服务商可在这里处理已分配订单、记录现场进度、上报异常并提交完工审核。</p>
         </div>
       </div>
 
       <div class="card">
-        <h2>后续工作台骨架</h2>
-        <div class="summary-grid">
-          <div class="summary-card"><span>待接订单</span><strong>待开发</strong></div>
-          <div class="summary-card"><span>今日任务</span><strong>待开发</strong></div>
-          <div class="summary-card"><span>服务记录</span><strong>待开发</strong></div>
+        <div class="provider-toolbar">
+          <h2 style="margin-right:auto;">我的工作台</h2>
+          <button class="btn btn-secondary" type="button" id="providerRefreshBtn">刷新</button>
         </div>
-        <div class="actions">
-          <button class="btn btn-primary" type="button" disabled>接单列表</button>
-          <button class="btn btn-secondary" type="button" disabled>服务日志</button>
-          <button class="btn btn-secondary" type="button" disabled>异常反馈</button>
+        <div class="summary-grid" id="providerSummary">
+          <div class="summary-card"><span>待接订单</span><strong>0</strong></div>
+          <div class="summary-card"><span>服务中</span><strong>0</strong></div>
+          <div class="summary-card"><span>待审核</span><strong>0</strong></div>
         </div>
+        <div id="providerOrders" class="provider-empty">正在读取订单...</div>
       </div>
     </div>
   </div>
@@ -61,6 +69,122 @@
     const providerApp = document.getElementById("providerApp");
     const providerIdentity = document.getElementById("providerIdentity");
     const providerLogoutBtn = document.getElementById("providerLogoutBtn");
+    const providerRefreshBtn = document.getElementById("providerRefreshBtn");
+    const providerOrders = document.getElementById("providerOrders");
+    const providerSummary = document.getElementById("providerSummary");
+    let providerEmail = "";
+
+    const statusLabels = {
+      assigned: "待接单",
+      accepted_by_worker: "已接单",
+      in_service: "服务中",
+      pending_quality_review: "待平台审核",
+      completed: "已完成",
+      exception_open: "异常处理中",
+      quoted: "待重新派单",
+    };
+
+    function escapeHtml(value) {
+      return String(value || "").replace(/[&<>"']/g, (char) => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+      }[char]));
+    }
+
+    async function providerRequest(url, options = {}) {
+      const resp = await fetch(url, {
+        ...options,
+        headers: { "Content-Type": "application/json", ...(options.headers || {}) },
+      });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.detail || "操作失败");
+      return data;
+    }
+
+    function renderSummary(orders) {
+      const count = (status) => orders.filter((order) => order.status === status).length;
+      providerSummary.innerHTML = `
+        <div class="summary-card"><span>待接订单</span><strong>${count("assigned")}</strong></div>
+        <div class="summary-card"><span>服务中</span><strong>${count("in_service") + count("accepted_by_worker")}</strong></div>
+        <div class="summary-card"><span>待审核</span><strong>${count("pending_quality_review")}</strong></div>
+      `;
+    }
+
+    function renderOrders(orders) {
+      renderSummary(orders);
+      if (!orders.length) {
+        providerOrders.className = "provider-empty";
+        providerOrders.innerHTML = "当前没有分配给你的活跃订单。";
+        return;
+      }
+      providerOrders.className = "";
+      providerOrders.innerHTML = orders.map((order) => `
+        <article class="provider-order">
+          <header>
+            <div>
+              <h3>${escapeHtml(order.id)} · ${escapeHtml(order.user)}</h3>
+              <p>${escapeHtml(order.address)}</p>
+            </div>
+            <strong>${statusLabels[order.status] || escapeHtml(order.status)}</strong>
+          </header>
+          <div class="provider-meta">
+            <div><span>服务类型</span>${escapeHtml(order.serviceType)}</div>
+            <div><span>预约时间</span>${escapeHtml(order.requestedTime)}</div>
+            <div><span>报价</span>${order.price ? `$${escapeHtml(order.price)}` : "待确认"}</div>
+            <div><span>草坪情况</span>${escapeHtml(order.condition)}</div>
+          </div>
+          <textarea class="provider-note" id="providerNote-${order.id}" placeholder="现场说明、到场备注、完工说明或异常描述"></textarea>
+          <div class="provider-actions">
+            ${order.status === "assigned" ? `<button class="btn btn-primary" data-provider-action="accept" data-order-id="${order.id}">接单</button>` : ""}
+            ${["assigned", "accepted_by_worker"].includes(order.status) ? `<button class="btn btn-secondary" data-provider-action="reject" data-order-id="${order.id}">拒单</button>` : ""}
+            ${["assigned", "accepted_by_worker"].includes(order.status) ? `<button class="btn btn-primary" data-provider-action="arrival" data-order-id="${order.id}">到场开工</button>` : ""}
+            ${order.status === "in_service" ? `<button class="btn btn-secondary" data-provider-action="log" data-order-id="${order.id}">记录服务</button>` : ""}
+            ${order.status === "in_service" ? `<button class="btn btn-primary" data-provider-action="complete" data-order-id="${order.id}">提交完工</button>` : ""}
+            ${!["completed", "pending_quality_review"].includes(order.status) ? `<button class="btn btn-secondary" data-provider-action="exception" data-order-id="${order.id}">上报异常</button>` : ""}
+          </div>
+        </article>
+      `).join("");
+    }
+
+    async function loadProviderWorkbench() {
+      if (!providerEmail) return;
+      providerOrders.innerHTML = "正在读取订单...";
+      const data = await providerRequest(`/api/provider/workbench?email=${encodeURIComponent(providerEmail)}`);
+      const label = data.worker ? `${data.worker.name} · ${data.worker.email}` : `${data.user.displayName || data.user.email} · 管理员查看`;
+      providerIdentity.textContent = label;
+      renderOrders(data.orders || []);
+    }
+
+    async function runProviderAction(action, orderId) {
+      const note = document.getElementById(`providerNote-${orderId}`)?.value.trim() || "";
+      const body = { email: providerEmail, note };
+      let url = `/api/provider/orders/${orderId}/${action}`;
+      if (action === "log") {
+        url = `/api/provider/orders/${orderId}/service-log`;
+        body.stage = "service_note";
+      }
+      if (action === "exception") {
+        body.issueType = "现场异常";
+      }
+      await providerRequest(url, { method: "POST", body: JSON.stringify(body) });
+      await loadProviderWorkbench();
+    }
+
+    providerOrders.addEventListener("click", async (event) => {
+      const button = event.target.closest("[data-provider-action]");
+      if (!button) return;
+      button.disabled = true;
+      try {
+        await runProviderAction(button.dataset.providerAction, button.dataset.orderId);
+      } catch (error) {
+        alert(error.message);
+      } finally {
+        button.disabled = false;
+      }
+    });
+
+    providerRefreshBtn.addEventListener("click", () => {
+      loadProviderWorkbench().catch((error) => alert(error.message));
+    });
 
     window.addEventListener("load", async () => {
       try {
@@ -77,13 +201,11 @@
             providerAuthCard.classList.add("hidden");
             providerApp.classList.remove("hidden");
             providerLogoutBtn.classList.remove("hidden");
+            providerEmail = sessionUser.email;
             providerIdentity.textContent = `${sessionUser.displayName || sessionUser.email} · ${sessionUser.email}`;
-            // 登录成功后从服务器拉取最新数据
-            if (typeof bootstrap === "function") {
-              bootstrap().catch((error) => {
-                console.error("数据加载失败:", error);
-              });
-            }
+            loadProviderWorkbench().catch((error) => {
+              providerOrders.innerHTML = `读取失败：${escapeHtml(error.message)}`;
+            });
           },
         });
       } catch (error) {

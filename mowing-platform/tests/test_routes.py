@@ -399,6 +399,50 @@ class TestWorkerRoutes:
         assert resp.json()["worker"]["name"] == "李师傅更新"
 
 
+class TestProviderWorkbench:
+    """Provider workbench route flow / 服务商工作台路由闭环."""
+
+    def test_provider_can_advance_own_order(self, client, sample_order_data):
+        resp = client.post("/api/orders", json=sample_order_data)
+        assert resp.status_code == 200
+        order_id = resp.json()["order"]["id"]
+        client.post(f"/api/orders/{order_id}/quote", json={"price": "120", "priceNote": "测试报价"})
+        client.post(f"/api/orders/{order_id}/assign", json={"workerId": "w-001"})
+
+        email = "zhang.worker@example.com"
+        resp = client.get("/api/provider/workbench", params={"email": email})
+        assert resp.status_code == 200
+        assert resp.json()["worker"]["id"] == "w-001"
+        assert any(order["id"] == order_id for order in resp.json()["orders"])
+
+        resp = client.post(
+            f"/api/provider/orders/{order_id}/accept",
+            json={"email": email, "note": "确认接单"},
+        )
+        assert resp.status_code == 200
+
+        resp = client.post(
+            f"/api/provider/orders/{order_id}/arrival",
+            json={"email": email, "note": "已到场"},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["order"]["status"] == "in_service"
+
+        resp = client.post(
+            f"/api/provider/orders/{order_id}/complete",
+            json={"email": email, "note": "服务完成，照片已回传"},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["order"]["status"] == "pending_quality_review"
+
+    def test_provider_cannot_operate_other_worker_order(self, client):
+        resp = client.post(
+            "/api/provider/orders/MOW-1003/accept",
+            json={"email": "li.worker@example.com", "note": "尝试越权接单"},
+        )
+        assert resp.status_code == 403
+
+
 class TestAddressRoutes:
     """Address autocomplete, geocode, reverse-geocode and suggest / 地址服务路由."""
 

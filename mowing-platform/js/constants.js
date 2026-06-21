@@ -23,10 +23,16 @@ const settlementLabels = {
   settled: "已结算",
 };
 
+const paymentLabels = {
+  unpaid: "未收款",
+  pending: "待收款",
+  paid: "已收款",
+  waived: "免收",
+};
+
 const priorityLabels = {
   low: "低优先级",
   normal: "常规",
   high: "优先处理",
   urgent: "紧急",
 };
-

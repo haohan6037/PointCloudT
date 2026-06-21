@@ -332,11 +332,14 @@ async function saveCompletion(orderId) {
   const actualAmount = document.getElementById(`archiveActualAmount-${orderId}`).value.trim();
   const settlementStatus = document.getElementById(`archiveSettlementStatus-${orderId}`).value;
   const completionNote = document.getElementById(`archiveCompletionNote-${orderId}`).value.trim();
+  const paymentStatus = document.getElementById(`archivePaymentStatus-${orderId}`)?.value || "unpaid";
+  const paymentMethod = document.getElementById(`archivePaymentMethod-${orderId}`)?.value.trim() || "";
+  const paymentNote = document.getElementById(`archivePaymentNote-${orderId}`)?.value.trim() || "";
   const platformShare = document.getElementById(`archivePlatformShare-${orderId}`).value.trim();
   const workerPayout = document.getElementById(`archiveWorkerPayout-${orderId}`).value.trim();
   const payload = await request(`/api/orders/${orderId}/completion`, {
     method: "POST",
-    body: JSON.stringify({ actualAmount, settlementStatus, completionNote, platformShare, workerPayout }),
+    body: JSON.stringify({ actualAmount, paymentStatus, paymentMethod, paymentNote, settlementStatus, completionNote, platformShare, workerPayout }),
   });
   hydrate(payload);
 }
@@ -346,11 +349,14 @@ async function saveCompletionFromDetail() {
   const actualAmount = document.getElementById("detailActualAmount").value.trim();
   const settlementStatus = document.getElementById("detailSettlementStatus").value;
   const completionNote = document.getElementById("detailCompletionNote").value.trim();
+  const paymentStatus = document.getElementById("detailPaymentStatus")?.value || "unpaid";
+  const paymentMethod = document.getElementById("detailPaymentMethod")?.value.trim() || "";
+  const paymentNote = document.getElementById("detailPaymentNote")?.value.trim() || "";
   const platformShare = document.getElementById("detailPlatformShare")?.value.trim() || "";
   const workerPayout = document.getElementById("detailWorkerPayout")?.value.trim() || "";
   const payload = await request(`/api/orders/${order.id}/completion`, {
     method: "POST",
-    body: JSON.stringify({ actualAmount, settlementStatus, completionNote, platformShare, workerPayout }),
+    body: JSON.stringify({ actualAmount, paymentStatus, paymentMethod, paymentNote, settlementStatus, completionNote, platformShare, workerPayout }),
   });
   hydrate(payload);
 }
@@ -372,10 +378,14 @@ async function batchSettleArchiveOrders() {
       const completionNote = completionNoteInput?.value.trim() || order.completionNote || "";
       const platformShare = platformShareInput?.value.trim() || order.platformShare || "";
       const workerPayout = workerPayoutInput?.value.trim() || order.workerPayout || "";
+      const paymentStatus = order.paymentStatus === "paid" ? "paid" : "pending";
       const payload = await request(`/api/orders/${order.id}/completion`, {
         method: "POST",
         body: JSON.stringify({
           actualAmount,
+          paymentStatus,
+          paymentMethod: order.paymentMethod || "",
+          paymentNote: order.paymentNote || "",
           settlementStatus: "settled",
           completionNote,
           platformShare,
@@ -532,4 +542,3 @@ async function updateWorkerProfile(workerId, formData) {
   });
   hydrate(payload);
 }
-

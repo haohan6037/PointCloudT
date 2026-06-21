@@ -423,6 +423,8 @@ function renderArchiveOrders(items) {
           <span>服务商</span><strong>${workerName(order.assignedWorkerId)}</strong>
           <span>报价金额</span><strong>${money(order.price)}</strong>
           <span>实收金额</span><strong>${archiveAmountDisplay(order)}</strong>
+          <span>收款状态</span><strong>${paymentLabels[order.paymentStatus || "unpaid"] || "未收款"}</strong>
+          <span>收款方式</span><strong>${order.paymentMethod || "待记录"}</strong>
           <span>平台分成</span><strong>${payoutDisplay(order.platformShare)}</strong>
           <span>服务商应结</span><strong>${payoutDisplay(order.workerPayout)}</strong>
           <span>预约时间</span><strong>${order.requestedTime}</strong>
@@ -445,6 +447,23 @@ function renderArchiveOrders(items) {
           <div class="field full">
             <label for="archiveCompletionNote-${order.id}">完成备注</label>
             <textarea class="textarea" id="archiveCompletionNote-${order.id}">${order.completionNote || ""}</textarea>
+          </div>
+          <div class="field">
+            <label for="archivePaymentStatus-${order.id}">收款状态</label>
+            <select class="select" id="archivePaymentStatus-${order.id}">
+              <option value="unpaid" ${(order.paymentStatus || "unpaid") === "unpaid" ? "selected" : ""}>未收款</option>
+              <option value="pending" ${order.paymentStatus === "pending" ? "selected" : ""}>待收款</option>
+              <option value="paid" ${order.paymentStatus === "paid" ? "selected" : ""}>已收款</option>
+              <option value="waived" ${order.paymentStatus === "waived" ? "selected" : ""}>免收</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="archivePaymentMethod-${order.id}">收款方式</label>
+            <input class="input" id="archivePaymentMethod-${order.id}" value="${order.paymentMethod || ""}" placeholder="Bank transfer / Cash" />
+          </div>
+          <div class="field full">
+            <label for="archivePaymentNote-${order.id}">收款备注</label>
+            <textarea class="textarea" id="archivePaymentNote-${order.id}">${order.paymentNote || ""}</textarea>
           </div>
           <div class="field">
             <label for="archivePlatformShare-${order.id}">平台分成 NZD</label>
@@ -1337,6 +1356,8 @@ function renderDetail() {
           <div class="detail-grid">
             <span>结算状态</span><strong>${settlementLabel(order.settlementStatus)}</strong>
             <span>实收金额</span><strong>${archiveAmountDisplay(order)}</strong>
+            <span>收款状态</span><strong>${paymentLabels[order.paymentStatus || "unpaid"] || "未收款"}</strong>
+            <span>收款方式</span><strong>${order.paymentMethod || "待记录"}</strong>
             <span>平台分成</span><strong>${payoutDisplay(order.platformShare)}</strong>
             <span>服务商应结</span><strong>${payoutDisplay(order.workerPayout)}</strong>
             <span>结算时间</span><strong>${order.settledAt || "未结算"}</strong>
@@ -1359,6 +1380,23 @@ function renderDetail() {
             <div class="field full">
               <label for="detailCompletionNote">完成备注</label>
               <textarea class="textarea" id="detailCompletionNote">${order.completionNote || ""}</textarea>
+            </div>
+            <div class="field">
+              <label for="detailPaymentStatus">收款状态</label>
+              <select class="select" id="detailPaymentStatus">
+                <option value="unpaid" ${(order.paymentStatus || "unpaid") === "unpaid" ? "selected" : ""}>未收款</option>
+                <option value="pending" ${order.paymentStatus === "pending" ? "selected" : ""}>待收款</option>
+                <option value="paid" ${order.paymentStatus === "paid" ? "selected" : ""}>已收款</option>
+                <option value="waived" ${order.paymentStatus === "waived" ? "selected" : ""}>免收</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="detailPaymentMethod">收款方式</label>
+              <input class="input" id="detailPaymentMethod" value="${order.paymentMethod || ""}" placeholder="Bank transfer / Cash" />
+            </div>
+            <div class="field full">
+              <label for="detailPaymentNote">收款备注</label>
+              <textarea class="textarea" id="detailPaymentNote">${order.paymentNote || ""}</textarea>
             </div>
             <div class="field">
               <label for="detailPlatformShare">平台分成 NZD</label>

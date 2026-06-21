@@ -285,12 +285,15 @@ class TestCompletion:
         order = store.update_completion(
             "MOW-1001",
             CompletionPayload(
-                actualAmount="95", settlementStatus="settled",
+                actualAmount="95", paymentStatus="paid", paymentMethod="Bank transfer",
+                paymentNote="已人工确认到账", settlementStatus="settled",
                 completionNote="完成", platformShare="20", workerPayout="75",
             ),
         )
         assert order["settlementStatus"] == "settled"
         assert order["actualAmount"] == "95"
+        assert order["paymentStatus"] == "paid"
+        assert order["paymentMethod"] == "Bank transfer"
 
     def test_archive_non_completed_fails(self, store):
         with pytest.raises(HTTPException, match="Only completed orders"):
@@ -355,13 +358,21 @@ class TestWorker:
     def test_update_profile(self, store):
         w = store.update_worker_profile(
             "w-001", WorkerProfilePayload(
-                name="张师傅改名", phone="021-111", area="North Shore",
+                name="张师傅改名", email="zhang.new@example.com", phone="021-111", area="North Shore",
                 approvalStatus="approved", serviceNote="更新备注",
                 lat=-36.72, lng=174.70,
             ),
         )
         assert w["name"] == "张师傅改名"
+        assert w["email"] == "zhang.new@example.com"
         assert w["lat"] == -36.72
+
+    def test_worker_email_lookup_and_orders(self, store):
+        worker = store.get_worker_by_email("zhang.worker@example.com")
+        assert worker is not None
+        assert worker["id"] == "w-001"
+        orders = store.list_orders_for_worker("w-001")
+        assert all(order["assignedWorkerId"] == "w-001" for order in orders)
 
     def test_worker_not_found(self, store):
         with pytest.raises(HTTPException, match="Worker not found"):
