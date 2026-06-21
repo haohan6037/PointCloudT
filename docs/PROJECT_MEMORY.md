@@ -296,6 +296,12 @@ python3 -m compileall -q mowing-platform/mqtt_monitor.py
 git diff --check
 ```
 
+GitHub Actions CI baseline:
+
+- `.github/workflows/ci.yml` runs `tests/test_store.py` with coverage scoped to `store`, `models`, and `data`, with `--cov-fail-under=40`.
+- The integration test job installs `httpx2` because the current FastAPI/Starlette `TestClient` dependency expects it.
+- Do not raise the coverage threshold back to 70 until broader tests cover `routes.py`, `mqtt_monitor.py`, `auth_service.py`, and `address_service.py`.
+
 MyGardenOS validation:
 
 ```bash
@@ -326,6 +332,7 @@ Expected local `/api/health` when PostgreSQL is connected:
 
 - Added robot coordinate alignment spec `docs/ROBOT_COORDINATE_ALIGNMENT_SPEC_V1.md`: canonical analysis frame is `GOS-MAP-XY` in meters, fixed per map, +X map right/east, +Y map up/north, yaw counter-clockwise from +X; robot/manufacturer coordinates must be transformed into this frame before coverage/missed-area analysis.
 - Added LAS/EPSG coordinate workflow `docs/LAS_EPSG_COORDINATE_WORKFLOW_V1.md` and linked it from `docs/REGISTRATION_WORKFLOW_V1.md`: LAS header CRS is authoritative when present, missing CRS falls back to `EPSG:32760`, WGS84 `EPSG:4326` is only for Google Maps/sanity checks, and Auckland Council alignment uses `EPSG:2193`.
+- Fixed GitHub Actions CI baseline after the 2026-06-21 push: coverage failure was caused by measuring the whole app while only running `tests/test_store.py`; CI now measures `store/models/data` with a 40% threshold and installs `httpx2` for FastAPI route tests.
 - Deployed `main` to AWS test through GitHub Actions after adding the missing GitHub environment variables. Verified ECS `gardenos-test:5`, then updated ECS to `gardenos-test:6`; the MQTT runtime env used `MQTT_HOST=66.33.22.249` and `MQTT_PORT=53239`, but the user later clarified this was only the old Railway example broker, not the real new target.
 - Verified AWS app health. The previous MQTT monitor verification used the old/example broker and must be repeated after the real broker address/port is configured.
 - Confirmed robot MQTT setup should be address/port only, not AWS IoT Core key/cert and not the HTTP ALB URL. Existing robot topics must remain unchanged.
