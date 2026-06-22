@@ -2,13 +2,14 @@
 
 ## Purpose
 
-GardenOS now supports a safer admin/provider API path:
+GardenOS now supports a safer protected API path:
 
 - Frontend pages request a Clerk session token from ClerkJS.
 - API requests send the token in `Authorization: Bearer <token>`.
 - Backend code verifies the token when `CLERK_JWT_KEY` is configured.
 - Verified token claim `sub` is matched to local `app_users.clerk_user_id`.
 - Role checks then use the local `app_users` row, not a client-supplied email.
+- Customer profile/order APIs also use the verified token in strict mode. Customer order access is restricted through the signed-in user's local customer profile phone.
 
 This keeps the app usable in local/dev mode while creating a strict production switch.
 
@@ -36,7 +37,7 @@ CLERK_AUTHORIZED_PARTIES=...
 
 Behavior:
 
-- Admin and provider protected APIs require a valid Clerk session token.
+- Admin, provider, and customer protected APIs require a valid Clerk session token.
 - Client-supplied emails and `X-GardenOS-Actor-Email` are not accepted as proof of identity.
 - If `CLERK_JWT_KEY` is missing, protected API calls fail.
 
@@ -93,12 +94,21 @@ Provider:
 - `POST /api/provider/orders/{order_id}/evidence`
 - `POST /api/provider/orders/{order_id}/exception`
 
+Customer:
+
+- `GET /api/customer/profile`
+- `PUT /api/customer/profile`
+- `POST /api/customer/orders`
+- `GET /api/customer/orders`
+- `POST /api/customer/orders/{order_id}/confirm`
+- `POST /api/customer/orders/{order_id}/reject`
+
 ## Remaining Auth Hardening
 
 Still needed before public production:
 
-- Apply token-backed customer identity to customer profile/order APIs.
-- Remove phone-only customer order lookup or restrict it to verified customer identity.
+- AWS test must be deployed with `CLERK_AUTH_STRICT=1` and `CLERK_JWT_KEY`.
+- Consider adding a durable `customer_email` / `customer_user_id` owner field on orders. The current strict path uses the signed-in customer's profile phone as the order ownership boundary to avoid a database migration.
 - Add managed upload scanning and file-size limits for evidence photos.
 - Move uploads to managed object storage before production scale.
 - Add audit log fields for actor id, role, and action on admin/provider operations.

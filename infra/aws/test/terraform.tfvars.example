@@ -11,6 +11,15 @@ geoapify_api_key_secret_value_from = "arn:aws:secretsmanager:ap-southeast-6:1339
 geoapify_api_key_secret_arn        = "arn:aws:secretsmanager:ap-southeast-6:133946907310:secret:Geoapify-xxxxxx"
 github_repo                   = "haohan6037/PointCloudT"
 clerk_public_key              = "pk_test_xxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+clerk_auth_strict             = "0"
+# Enable strict auth after creating the Clerk JWT key secret in Secrets Manager.
+# clerk_auth_strict                    = "1"
+# clerk_jwt_key_secret_value_from      = "arn:aws:secretsmanager:ap-southeast-6:133946907310:secret:Clerk_JWT_Key-xxxxxx:CLERK_JWT_KEY::"
+# clerk_jwt_key_secret_arn             = "arn:aws:secretsmanager:ap-southeast-6:133946907310:secret:Clerk_JWT_Key-xxxxxx"
+# Optional; if blank, the app derives the issuer from clerk_public_key.
+# clerk_issuer                         = "https://your-instance.clerk.accounts.dev"
+# Optional; if blank, Terraform uses the test ALB origin.
+# clerk_authorized_parties             = "http://gardenos-test-1275568806.ap-southeast-6.elb.amazonaws.com"
 admin_emails                  = "haohan6037@gmail.com,kaiyu.yang@youngproperty.co.nz"
 provider_emails               = ""
 

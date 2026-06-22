@@ -405,6 +405,47 @@ def _require_provider_order(
     return user, order, worker
 
 
+def _require_customer_actor(email: str = "", authorization: str = "") -> dict[str, Any]:
+    """Require an active customer/admin user for customer-facing APIs."""
+    user = _user_from_authorization(authorization) or _fallback_user_by_email(email, "Customer authentication required")
+    if user.get("status") != "active" or user.get("role") not in {"customer", "admin"}:
+        raise HTTPException(status_code=403, detail="Customer authentication required")
+    return user
+
+
+def _blank_customer_profile(email: str) -> dict[str, str]:
+    return {
+        "email": email,
+        "name": "",
+        "phone": "",
+        "whatsapp": "",
+        "wechat": "",
+        "address": "",
+    }
+
+
+def _customer_profile_for_user(user: dict[str, Any]) -> dict[str, Any]:
+    email = str(user.get("email") or "")
+    return service.store.get_customer_profile(email) or _blank_customer_profile(email)
+
+
+def _customer_order_matches_user(order: dict[str, Any], user: dict[str, Any]) -> bool:
+    if user.get("role") == "admin":
+        return True
+    profile = _customer_profile_for_user(user)
+    phone = str(profile.get("phone") or "").strip()
+    return bool(phone and str(order.get("phone") or "").strip() == phone)
+
+
+def _require_customer_order_access(order_id: str, user: dict[str, Any]) -> dict[str, Any]:
+    order = next((item for item in service.store.bootstrap()["orders"] if item["id"] == order_id), None)
+    if order is None:
+        raise HTTPException(status_code=404, detail="Order not found")
+    if not _customer_order_matches_user(order, user):
+        raise HTTPException(status_code=403, detail="Order does not belong to this customer")
+    return order
+
+
 def _safe_upload_filename(filename: str) -> str:
     """Sanitize user-supplied upload filename / 清理上传文件名."""
     base = os.path.basename(filename or "upload")
@@ -591,8 +632,23 @@ async def customer_create_order(
     condition: str = Form(...),
     note: str = Form(""),
     photos: list[UploadFile] = File(default_factory=list),
+    authorization: str = Header(default="", alias="Authorization"),
 ) -> dict[str, Any]:
     """Customer submits a new order / 用户提交新订单."""
+    user_actor = _user_from_authorization(authorization)
+    if strict_clerk_auth_enabled():
+        user_actor = user_actor or _require_customer_actor(authorization=authorization)
+    if user_actor is not None:
+        if user_actor.get("status") != "active" or user_actor.get("role") not in {"customer", "admin"}:
+            raise HTTPException(status_code=403, detail="Customer authentication required")
+        if user_actor.get("role") != "admin":
+            profile = _customer_profile_for_user(user_actor)
+            profile_phone = str(profile.get("phone") or "").strip()
+            if not profile_phone:
+                raise HTTPException(status_code=400, detail="Customer profile phone is required before booking")
+            if phone.strip() != profile_phone:
+                raise HTTPException(status_code=403, detail="Order phone must match the signed-in customer profile")
+
     saved_photos: list[str] = []
     for photo in photos:
         if photo.filename:
@@ -619,24 +675,48 @@ async def customer_create_order(
 
 
 @app.get("/api/customer/orders")
-def customer_list_orders(phone: str = "") -> dict[str, Any]:
+def customer_list_orders(
+    phone: str = "",
+    authorization: str = Header(default="", alias="Authorization"),
+) -> dict[str, Any]:
     """Customer views their orders by phone / 用户按手机号查订单."""
     data = service.store.bootstrap()
-    if phone:
+    user_actor = _user_from_authorization(authorization)
+    if user_actor is not None or strict_clerk_auth_enabled():
+        user_actor = user_actor or _require_customer_actor(authorization=authorization)
+        if user_actor.get("role") == "admin" and phone:
+            data["orders"] = [o for o in data["orders"] if o.get("phone") == phone]
+        else:
+            data["orders"] = [o for o in data["orders"] if _customer_order_matches_user(o, user_actor)]
+    elif phone:
         data["orders"] = [o for o in data["orders"] if o.get("phone") == phone]
     return data
 
 
 @app.post("/api/customer/orders/{order_id}/confirm")
-def customer_confirm_quote(order_id: str) -> dict[str, Any]:
+def customer_confirm_quote(
+    order_id: str,
+    authorization: str = Header(default="", alias="Authorization"),
+) -> dict[str, Any]:
     """Customer accepts the quoted price / 用户确认报价."""
+    user_actor = _user_from_authorization(authorization)
+    if user_actor is not None or strict_clerk_auth_enabled():
+        user_actor = user_actor or _require_customer_actor(authorization=authorization)
+        _require_customer_order_access(order_id, user_actor)
     order = service.store.accept_by_customer(order_id)
     return {"order": order, **service.bootstrap()}
 
 
 @app.post("/api/customer/orders/{order_id}/reject")
-def customer_reject_quote(order_id: str) -> dict[str, Any]:
+def customer_reject_quote(
+    order_id: str,
+    authorization: str = Header(default="", alias="Authorization"),
+) -> dict[str, Any]:
     """Customer rejects the quoted price / 用户拒绝报价."""
+    user_actor = _user_from_authorization(authorization)
+    if user_actor is not None or strict_clerk_auth_enabled():
+        user_actor = user_actor or _require_customer_actor(authorization=authorization)
+        _require_customer_order_access(order_id, user_actor)
     order = service.store.reject_by_customer(order_id)
     return {"order": order, **service.bootstrap()}
 
@@ -769,22 +849,34 @@ def verify_code_and_login(payload: VerifyCodePayload) -> dict[str, Any]:
 # ── Customer profile / 用户资料 ───────────────────────────────────────
 
 @app.get("/api/customer/profile")
-def get_customer_profile(email: str = "") -> dict[str, Any]:
+def get_customer_profile(
+    email: str = "",
+    authorization: str = Header(default="", alias="Authorization"),
+) -> dict[str, Any]:
     """Get customer profile / 获取用户资料."""
+    user_actor = _user_from_authorization(authorization)
+    if user_actor is not None or strict_clerk_auth_enabled():
+        user_actor = user_actor or _require_customer_actor(authorization=authorization)
+        email = str(user_actor.get("email") or "")
     if not email:
         raise HTTPException(status_code=400, detail="Email is required")
     profile = service.store.get_customer_profile(email)
     if profile is None:
-        profile = {
-            "email": email, "name": "", "phone": "",
-            "whatsapp": "", "wechat": "", "address": "",
-        }
+        profile = _blank_customer_profile(email)
     return {"profile": profile}
 
 
 @app.put("/api/customer/profile")
-def save_customer_profile(payload: CustomerProfilePayload, email: str = "") -> dict[str, Any]:
+def save_customer_profile(
+    payload: CustomerProfilePayload,
+    email: str = "",
+    authorization: str = Header(default="", alias="Authorization"),
+) -> dict[str, Any]:
     """Save customer profile / 保存用户资料."""
+    user_actor = _user_from_authorization(authorization)
+    if user_actor is not None or strict_clerk_auth_enabled():
+        user_actor = user_actor or _require_customer_actor(authorization=authorization)
+        email = str(user_actor.get("email") or "")
     if not email:
         raise HTTPException(status_code=400, detail="Email is required")
     profile = service.store.save_customer_profile(email, payload)

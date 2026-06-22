@@ -341,6 +341,124 @@ class TestCustomerAuth:
         )
         assert resp.status_code == 400
 
+    def test_strict_customer_profile_and_orders_use_token_identity(self, client, monkeypatch):
+        monkeypatch.setenv("CLERK_AUTH_STRICT", "1")
+        client.post(
+            "/api/session/sync",
+            json={
+                "email": "strict.customer@example.com",
+                "clerkUserId": "user_customer_strict",
+                "displayName": "Strict Customer",
+            },
+        )
+        monkeypatch.setattr("routes.verify_clerk_session_token", lambda authorization: {"sub": "user_customer_strict"})
+        headers = {"Authorization": "Bearer customer-token"}
+
+        resp = client.put(
+            "/api/customer/profile",
+            params={"email": "other.customer@example.com"},
+            headers=headers,
+            json={
+                "name": "Strict Customer",
+                "phone": "021-777-0001",
+                "whatsapp": "",
+                "wechat": "",
+                "address": "7 Strict Street, Auckland",
+            },
+        )
+        assert resp.status_code == 200
+        assert resp.json()["profile"]["email"] == "strict.customer@example.com"
+
+        resp = client.get("/api/customer/profile", params={"email": "other.customer@example.com"}, headers=headers)
+        assert resp.status_code == 200
+        assert resp.json()["profile"]["email"] == "strict.customer@example.com"
+
+        resp = client.post(
+            "/api/customer/orders",
+            headers=headers,
+            data={
+                "user": "Strict Customer",
+                "phone": "021-777-0001",
+                "address": "7 Strict Street, Auckland",
+                "serviceType": "一次性割草",
+                "requestedDate": "2026-06-25",
+                "requestedTime": "09:00",
+                "lawnSize": "120",
+                "condition": "平整",
+                "note": "",
+            },
+        )
+        assert resp.status_code == 200
+        order_id = resp.json()["order"]["id"]
+
+        resp = client.get("/api/customer/orders", params={"phone": "021-000-0000"}, headers=headers)
+        assert resp.status_code == 200
+        orders = resp.json()["orders"]
+        assert any(order["id"] == order_id for order in orders)
+        assert all(order["phone"] == "021-777-0001" for order in orders)
+
+    def test_strict_customer_cannot_confirm_another_customers_order(self, client, monkeypatch):
+        monkeypatch.setenv("CLERK_AUTH_STRICT", "1")
+        users = {
+            "Bearer customer-one": "user_customer_one",
+            "Bearer customer-two": "user_customer_two",
+        }
+
+        def fake_verify(authorization):
+            return {"sub": users.get(authorization, "")}
+
+        client.post(
+            "/api/session/sync",
+            json={"email": "one.customer@example.com", "clerkUserId": "user_customer_one", "displayName": "One"},
+        )
+        client.post(
+            "/api/session/sync",
+            json={"email": "two.customer@example.com", "clerkUserId": "user_customer_two", "displayName": "Two"},
+        )
+        monkeypatch.setattr("routes.verify_clerk_session_token", fake_verify)
+
+        client.put(
+            "/api/customer/profile",
+            headers={"Authorization": "Bearer customer-one"},
+            json={"name": "One", "phone": "021-777-1001", "address": "1 One Street, Auckland"},
+        )
+        client.put(
+            "/api/customer/profile",
+            headers={"Authorization": "Bearer customer-two"},
+            json={"name": "Two", "phone": "021-777-2002", "address": "2 Two Street, Auckland"},
+        )
+        resp = client.post(
+            "/api/customer/orders",
+            headers={"Authorization": "Bearer customer-one"},
+            data={
+                "user": "One",
+                "phone": "021-777-1001",
+                "address": "1 One Street, Auckland",
+                "serviceType": "一次性割草",
+                "requestedDate": "2026-06-25",
+                "requestedTime": "09:00",
+                "lawnSize": "120",
+                "condition": "平整",
+                "note": "",
+            },
+        )
+        assert resp.status_code == 200
+        order_id = resp.json()["order"]["id"]
+        client.post(f"/api/orders/{order_id}/quote", json={"price": "100"})
+
+        resp = client.post(
+            f"/api/customer/orders/{order_id}/confirm",
+            headers={"Authorization": "Bearer customer-two"},
+        )
+        assert resp.status_code == 403
+
+        resp = client.post(
+            f"/api/customer/orders/{order_id}/confirm",
+            headers={"Authorization": "Bearer customer-one"},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["order"]["status"] == "accepted_by_customer"
+
 
 class TestOrderLifecycle:
     """Full order lifecycle via HTTP / 完整订单生命周期 HTTP 测试."""
@@ -372,6 +490,143 @@ class TestOrderLifecycle:
         resp = client.post(f"/api/orders/{order_id}/accept")
         assert resp.status_code == 200
         assert resp.json()["order"]["status"] == "accepted_by_worker"
+
+    def test_business_closure_customer_to_archive(self, client, monkeypatch):
+        monkeypatch.setenv("CLERK_AUTH_STRICT", "1")
+        users = {
+            "Bearer closure-customer": "user_closure_customer",
+            "Bearer closure-provider": "user_closure_provider",
+        }
+
+        def fake_verify(authorization):
+            return {"sub": users.get(authorization, "")}
+
+        client.post(
+            "/api/session/sync",
+            json={
+                "email": "closure.customer@example.com",
+                "clerkUserId": "user_closure_customer",
+                "displayName": "Closure Customer",
+            },
+        )
+        client.post(
+            "/api/session/sync",
+            json={
+                "email": "zhang.worker@example.com",
+                "clerkUserId": "user_closure_provider",
+                "displayName": "张师傅",
+            },
+        )
+        client.put(
+            "/api/users/role",
+            headers={"X-GardenOS-Actor-Email": "haohan6037@gmail.com"},
+            json={"email": "zhang.worker@example.com", "role": "server", "status": "active"},
+        )
+        monkeypatch.setattr("routes.verify_clerk_session_token", fake_verify)
+
+        customer_headers = {"Authorization": "Bearer closure-customer"}
+        provider_headers = {"Authorization": "Bearer closure-provider"}
+
+        resp = client.put(
+            "/api/customer/profile",
+            headers=customer_headers,
+            json={
+                "name": "Closure Customer",
+                "phone": "021-777-3003",
+                "address": "3 Closure Street, Auckland",
+            },
+        )
+        assert resp.status_code == 200
+
+        resp = client.post(
+            "/api/customer/orders",
+            headers=customer_headers,
+            data={
+                "user": "Closure Customer",
+                "phone": "021-777-3003",
+                "address": "3 Closure Street, Auckland",
+                "serviceType": "一次性割草",
+                "requestedDate": "2026-06-26",
+                "requestedTime": "10:00",
+                "lawnSize": "180",
+                "condition": "边角较多",
+                "note": "闭环验收订单",
+            },
+        )
+        assert resp.status_code == 200
+        order_id = resp.json()["order"]["id"]
+
+        resp = client.post(f"/api/orders/{order_id}/quote", json={"price": "180", "priceNote": "闭环报价"})
+        assert resp.status_code == 200
+        assert resp.json()["order"]["status"] == "quoted"
+
+        resp = client.post(f"/api/customer/orders/{order_id}/confirm", headers=customer_headers)
+        assert resp.status_code == 200
+        assert resp.json()["order"]["status"] == "accepted_by_customer"
+
+        resp = client.post(f"/api/orders/{order_id}/assign", json={"workerId": "w-001"})
+        assert resp.status_code == 200
+        assert resp.json()["order"]["status"] == "assigned"
+
+        resp = client.post(
+            f"/api/provider/orders/{order_id}/accept",
+            headers=provider_headers,
+            json={"email": "zhang.worker@example.com", "note": "可以服务"},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["order"]["status"] == "accepted_by_worker"
+
+        resp = client.post(
+            f"/api/provider/orders/{order_id}/arrival",
+            headers=provider_headers,
+            json={"email": "zhang.worker@example.com", "note": "已到场"},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["order"]["status"] == "in_service"
+
+        resp = client.post(
+            f"/api/provider/orders/{order_id}/evidence",
+            headers=provider_headers,
+            data={"email": "zhang.worker@example.com", "note": "完工照片"},
+            files={"photos": ("closure-before.jpg", b"fake-image", "image/jpeg")},
+        )
+        assert resp.status_code == 200
+        assert len(resp.json()["photos"]) == 1
+
+        resp = client.post(
+            f"/api/provider/orders/{order_id}/complete",
+            headers=provider_headers,
+            json={"email": "zhang.worker@example.com", "note": "已完工"},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["order"]["status"] == "pending_quality_review"
+
+        resp = client.post(
+            f"/api/orders/{order_id}/quality-review",
+            json={"action": "approve", "note": "验收通过"},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["order"]["status"] == "completed"
+
+        resp = client.post(
+            f"/api/orders/{order_id}/completion",
+            json={
+                "actualAmount": "180",
+                "paymentStatus": "paid",
+                "paymentMethod": "manual",
+                "paymentReceivedAt": "",
+                "paymentNote": "闭环测试收款",
+                "settlementStatus": "settled",
+                "completionNote": "闭环验收归档",
+                "platformShare": "54",
+                "workerPayout": "126",
+            },
+        )
+        assert resp.status_code == 200
+        archived = resp.json()["order"]
+        assert archived["status"] == "completed"
+        assert archived["paymentStatus"] == "paid"
+        assert archived["settlementStatus"] == "settled"
 
     def test_reassign(self, client):
         # Find a quoted order

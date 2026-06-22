@@ -227,7 +227,7 @@
   <div id="trackTab" class="hidden">
     <div class="card">
       <h2>查看我的订单</h2>
-      <p style="font-size:13px;color:var(--muted);margin-bottom:10px;">显示该手机号关联的所有订单</p>
+      <p style="font-size:13px;color:var(--muted);margin-bottom:10px;">显示当前账号关联的订单</p>
       <button class="btn btn-primary" id="trackBtn">查询订单</button>
     </div>
     <div id="trackResult"></div>
@@ -310,7 +310,10 @@ function enforceProfileGate() {
 }
 
 async function fetchCustomerProfile(email) {
-  const resp = await fetch(`/api/customer/profile?email=${encodeURIComponent(email)}`);
+  const resp = await fetch(
+    `/api/customer/profile?email=${encodeURIComponent(email)}`,
+    { headers: await window.GardenOSAuth.authHeaders() }
+  );
   const data = await resp.json();
   if (!resp.ok) throw new Error(data.detail || "读取资料失败");
   return data.profile;
@@ -417,7 +420,7 @@ document.getElementById("saveProfileBtn").addEventListener("click", async () => 
       throw new Error("姓名、电话和常用地址为必填项");
     }
     const resp = await fetch(`/api/customer/profile?email=${encodeURIComponent(customerEmail)}`, {
-      method: "PUT", headers: {"Content-Type":"application/json"},
+      method: "PUT", headers: await window.GardenOSAuth.authHeaders({"Content-Type":"application/json"}),
       body: JSON.stringify(payload),
     });
     const data = await resp.json();
@@ -602,7 +605,11 @@ document.getElementById("orderTab").addEventListener("submit", async e => {
   selectedFiles.forEach(f => form.append("photos", f));
 
   try {
-    const resp = await fetch("/api/customer/orders", { method: "POST", body: form });
+    const resp = await fetch("/api/customer/orders", {
+      method: "POST",
+      headers: await window.GardenOSAuth.authHeaders(),
+      body: form,
+    });
     if (!resp.ok) throw new Error((await resp.json()).detail || "提交失败");
     const data = await resp.json();
     const orderId = data.order.id;
@@ -625,20 +632,14 @@ document.getElementById("trackBtn").addEventListener("click", async () => {
     alert("请先完善姓名、电话和常用地址");
     return;
   }
-  // Use profile phone + order phone / 用资料电话 + 下单电话查
-  const phones = [customerProfile?.phone, document.getElementById("userPhone").value].filter(Boolean);
-  if (!phones.length) { alert("请先在个人资料中填写联系电话"); return; }
   const target = document.getElementById("trackResult");
   target.innerHTML = '<div style="text-align:center;padding:20px;color:var(--muted);">查询中...</div>';
 
   try {
-    // Query with all known phones / 用所有已知手机号查
-    const allOrders = [];
-    for (const phone of phones) {
-      const resp = await fetch(`/api/customer/orders?phone=${encodeURIComponent(phone)}`);
-      const data = await resp.json();
-      allOrders.push(...(data.orders || []));
-    }
+    const resp = await fetch("/api/customer/orders", { headers: await window.GardenOSAuth.authHeaders() });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.detail || "查询失败");
+    const allOrders = data.orders || [];
     // Deduplicate by order id / 按订单号去重
     const seen = new Set();
     const orders = allOrders.filter(o => seen.has(o.id) ? false : seen.add(o.id)).sort((a,b) => b.updatedAt.localeCompare(a.updatedAt));
@@ -675,14 +676,20 @@ document.getElementById("trackBtn").addEventListener("click", async () => {
     // Wire confirm/reject
     target.querySelectorAll("[data-confirm]").forEach(btn => {
       btn.addEventListener("click", async () => {
-        await fetch(`/api/customer/orders/${btn.dataset.confirm}/confirm`, { method: "POST" });
+        await fetch(`/api/customer/orders/${btn.dataset.confirm}/confirm`, {
+          method: "POST",
+          headers: await window.GardenOSAuth.authHeaders(),
+        });
         document.getElementById("trackBtn").click();
       });
     });
     target.querySelectorAll("[data-reject]").forEach(btn => {
       btn.addEventListener("click", async () => {
         if (!confirm("确认拒绝此报价？订单将回到待平台确认状态。")) return;
-        await fetch(`/api/customer/orders/${btn.dataset.reject}/reject`, { method: "POST" });
+        await fetch(`/api/customer/orders/${btn.dataset.reject}/reject`, {
+          method: "POST",
+          headers: await window.GardenOSAuth.authHeaders(),
+        });
         document.getElementById("trackBtn").click();
       });
     });
