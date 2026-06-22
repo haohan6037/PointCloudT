@@ -223,7 +223,7 @@ Runtime details:
 | Security group | `sg-067d077ce5e5c0830` |
 | MQTT port | `53239` |
 | Auth/TLS | Anonymous/no TLS for robot compatibility during test migration |
-| ECS app task definition | `gardenos-test:7` |
+| ECS app task definition | `gardenos-test:11` |
 | ECS MQTT env | `MQTT_HOST=3.103.181.148`, `MQTT_PORT=53239`, `MQTT_MONITOR_ENABLED=1` |
 
 Verification:
@@ -241,6 +241,39 @@ Security note:
 - The broker is public on TCP `53239` so robots on mobile networks can connect with only address/port.
 - Do not publish robot commands from platform management without a separate safety design.
 - Add username/password or IP restrictions later if the robot firmware supports it.
+
+## Clerk Strict Auth: 2026-06-22
+
+AWS test was updated to the pushed `main` image:
+
+```text
+ECS task definition -> gardenos-test:11
+Container image -> 133946907310.dkr.ecr.ap-southeast-6.amazonaws.com/gardenos-test-app:db2dfde6edae2fd58bf0a860512a5164ddbf027e
+CLERK_AUTH_STRICT -> 1
+CLERK_AUTHORIZED_PARTIES -> http://gardenos-test-1275568806.ap-southeast-6.elb.amazonaws.com
+CLERK_JWT_KEY -> Secrets Manager secret Clerk_JWT_Key
+```
+
+Important:
+
+- `Clerk_JWT_Key` is a plaintext Secrets Manager secret in this account, not a JSON object with a `CLERK_JWT_KEY` key.
+- Do not print or commit the JWT public key value.
+- `gardenos-test:10` failed because it referenced `Clerk_JWT_Key:CLERK_JWT_KEY::`; `gardenos-test:11` corrected this to the base secret ARN.
+
+Verification:
+
+```text
+GitHub Actions CI -> passed, run 27925343248
+GitHub Actions deploy -> passed, run 27925343256
+ECS service -> gardenos-test:11, desired 1, running 1, pending 0, rollout COMPLETED
+GET /api/health -> {"ok":true,"mode":"postgres","databaseEnabled":true,"error":null}
+AWS strict-auth smoke -> passed for health/pages and unauthenticated rejection on /api/users, /api/provider/workbench, and /api/customer/orders
+GET /api/mqtt/status without token -> 401 Missing Clerk session token
+GET /api/mqtt/messages without token -> 401 Missing Clerk session token
+MQTT publish/subscribe on HeartBeat -> ok, broker 3.103.181.148:53239
+```
+
+Positive admin/provider/customer token-path checks still require real Clerk session tokens from the browser login session.
 
 Frontend login note:
 

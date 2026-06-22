@@ -148,10 +148,11 @@ AWS test is separate from local dev:
 - App URL currently documented in `docs/AWS_TEST_DEPLOYMENT.md`.
 - Runtime should use AWS RDS and Secrets Manager.
 - Existing RDS and secrets are reused; do not copy local `.env` into AWS.
-- Current ECS task definition after the 2026-06-21 MQTT broker migration is `gardenos-test:7`.
+- Current ECS task definition after the 2026-06-22 strict-auth AWS deploy is `gardenos-test:11`.
 - Current AWS app URL is `http://gardenos-test-1275568806.ap-southeast-6.elb.amazonaws.com`.
 - AWS `/api/health` verified `mode: postgres`, `databaseEnabled: true`.
 - Current AWS MQTT broker is EC2 Mosquitto instance `i-07ee81ca7a5d2e5e5` with Elastic IP `3.103.181.148`, port `53239`, security group `sg-067d077ce5e5c0830`.
+- AWS test runtime has `CLERK_AUTH_STRICT=1`, `CLERK_AUTHORIZED_PARTIES=http://gardenos-test-1275568806.ap-southeast-6.elb.amazonaws.com`, and `CLERK_JWT_KEY` injected from Secrets Manager secret `Clerk_JWT_Key`. That secret is plaintext, not JSON-keyed.
 
 Secrets may be referenced by secret name or environment key only. Do not record secret values.
 
@@ -275,7 +276,7 @@ Completed or mostly functional:
 
 Known gaps:
 
-- Customer-facing profile/order APIs still need token-backed identity; admin/provider API token verification is implemented but strict production depends on Clerk runtime config.
+- Customer-facing profile/order APIs now support token-backed identity in strict mode. AWS test has strict Clerk runtime config enabled; positive admin/provider/customer token-path checks still require real Clerk session tokens.
 - Service-provider portal still needs richer earnings display and real provider onboarding. Evidence upload is functional, but production file size/type scanning and managed object storage remain later hardening work.
 - Payment/settlement automation is not implemented.
 - Robot maintenance workflows are not phase-1 complete.
@@ -349,6 +350,7 @@ Expected local `/api/health` when PostgreSQL is connected:
 - Added customer token-backed identity for strict mode. Customer profile/order APIs accept Clerk Bearer tokens, resolve the local user through `app_users.clerk_user_id`, ignore spoofed `email` query parameters, and restrict customer order list/quote confirmation/rejection to orders matching the signed-in customer's profile phone. The old email/phone fallback remains available only outside strict mode for local/demo compatibility. Validation now passes 87 tests.
 - Added `docs/PILOT_GO_LIVE_RUNBOOK_V1.md` to capture the remaining AWS strict-auth deployment steps, AWS smoke-test gates, full business-closure acceptance path, and the pilot decision: owner-only AWS smoke can proceed after strict auth deploys, but external small-pilot usage should wait for HTTPS/domain and managed evidence storage such as S3.
 - Added `scripts/aws_strict_auth_smoke.sh` for post-deploy AWS smoke testing. It checks health/pages, strict unauthenticated rejection, and optional admin/provider/customer positive token paths without storing tokens in source.
+- Pushed `main` through GitHub Actions and deployed AWS test to image `gardenos-test-app:db2dfde6edae2fd58bf0a860512a5164ddbf027e`. Registered ECS task definition `gardenos-test:11` with strict Clerk auth enabled and `CLERK_JWT_KEY` from plaintext Secrets Manager secret `Clerk_JWT_Key`. AWS smoke passed for health/pages and unauthenticated rejection on admin, provider, customer, and MQTT admin APIs; positive token-path checks were skipped because no real Clerk session tokens were provided. MQTT broker publish/subscribe on `HeartBeat` still works against `3.103.181.148:53239`.
 
 ### 2026-06-19
 
