@@ -57,6 +57,8 @@ CLERK_ISSUER=<expected Clerk issuer>
 CLERK_AUDIENCE=<expected JWT audience, comma-separated>
 ```
 
+If `CLERK_ISSUER` is not set, the backend derives it from `Clerk_Public_Key`, `CLERK_PUBLISHABLE_KEY`, or `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` when possible.
+
 Do not commit real secrets or private keys. `CLERK_JWT_KEY` is a public verification key, but it should still be managed through environment/runtime config rather than hard-coded in source.
 
 ## Clerk Dashboard Values Needed
@@ -65,9 +67,10 @@ Ask the project owner for:
 
 1. Clerk publishable key for frontend login.
 2. Clerk JWT public key in PEM format.
-3. Clerk issuer / Frontend API URL.
-4. Allowed frontend origins for `CLERK_AUTHORIZED_PARTIES`.
-5. Production domain once available.
+3. Allowed frontend origins for `CLERK_AUTHORIZED_PARTIES`.
+4. Production domain once available.
+
+The Clerk issuer / Frontend API URL can usually be derived from the publishable key. Configure `CLERK_ISSUER` explicitly only when using a custom Clerk domain or when runtime verification shows the derived value does not match the token `iss`.
 
 ## Current Protected APIs
 

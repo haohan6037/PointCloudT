@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import time
 import urllib.parse
@@ -41,6 +42,32 @@ class TestDatabaseDsn:
         assert urllib.parse.unquote(parsed.password or "") == "secret with spaces"
         assert query["sslmode"] == ["verify-full"]
         assert query["sslrootcert"] == ["/app/certs/global-bundle.pem"]
+
+
+class TestClerkAuthConfig:
+    """Clerk auth runtime configuration."""
+
+    def test_derives_issuer_from_publishable_key(self, monkeypatch):
+        from auth_service import clerk_issuer_from_env
+
+        host = "bright-marten-12.clerk.accounts.dev$"
+        encoded = base64.urlsafe_b64encode(host.encode("utf-8")).decode("ascii").rstrip("=")
+
+        monkeypatch.delenv("CLERK_ISSUER", raising=False)
+        monkeypatch.setenv("Clerk_Public_Key", f"pk_test_{encoded}")
+
+        assert clerk_issuer_from_env() == "https://bright-marten-12.clerk.accounts.dev"
+
+    def test_explicit_issuer_wins_over_publishable_key(self, monkeypatch):
+        from auth_service import clerk_issuer_from_env
+
+        host = "bright-marten-12.clerk.accounts.dev$"
+        encoded = base64.urlsafe_b64encode(host.encode("utf-8")).decode("ascii").rstrip("=")
+
+        monkeypatch.setenv("CLERK_ISSUER", "https://clerk.example.com")
+        monkeypatch.setenv("Clerk_Public_Key", f"pk_test_{encoded}")
+
+        assert clerk_issuer_from_env() == "https://clerk.example.com"
 
 
 class TestHealth:

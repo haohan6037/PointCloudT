@@ -82,6 +82,42 @@ variable "clerk_public_key" {
   sensitive   = true
 }
 
+variable "clerk_auth_strict" {
+  description = "Set to 1 to require verified Clerk Bearer tokens for protected admin/provider APIs."
+  type        = string
+  default     = "0"
+
+  validation {
+    condition     = contains(["0", "1"], var.clerk_auth_strict)
+    error_message = "clerk_auth_strict must be either 0 or 1."
+  }
+}
+
+variable "clerk_issuer" {
+  description = "Optional explicit Clerk issuer / Frontend API URL. If empty, it is derived from clerk_public_key."
+  type        = string
+  default     = ""
+}
+
+variable "clerk_authorized_parties" {
+  description = "Comma-separated allowed frontend origins for Clerk token azp validation. If empty, the test ALB origin is used."
+  type        = string
+  default     = ""
+}
+
+variable "clerk_jwt_key_secret_value_from" {
+  description = "Secrets Manager valueFrom for CLERK_JWT_KEY. Leave empty to omit strict JWT key injection."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "clerk_jwt_key_secret_arn" {
+  description = "Base Secrets Manager ARN allowed for Clerk JWT public key access."
+  type        = string
+  default     = "arn:aws:secretsmanager:ap-southeast-6:133946907310:secret:Clerk_JWT_Key-*"
+}
+
 variable "admin_emails" {
   description = "Comma-separated emails that should be treated as platform admins."
   type        = string

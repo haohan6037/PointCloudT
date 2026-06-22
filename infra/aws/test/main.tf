@@ -1,6 +1,11 @@
 locals {
-  name       = "gardenos-${var.environment}"
-  subnet_ids = length(var.subnet_ids) > 0 ? var.subnet_ids : data.aws_subnets.selected.ids
+  name                         = "gardenos-${var.environment}"
+  subnet_ids                   = length(var.subnet_ids) > 0 ? var.subnet_ids : data.aws_subnets.selected.ids
+  clerk_publishable_key_body   = replace(replace(var.clerk_public_key, "pk_test_", ""), "pk_live_", "")
+  clerk_publishable_key_host   = try(trimsuffix(base64decode(local.clerk_publishable_key_body), "$"), "")
+  clerk_issuer_effective       = var.clerk_issuer != "" ? var.clerk_issuer : (local.clerk_publishable_key_host != "" ? "https://${local.clerk_publishable_key_host}" : "")
+  clerk_authorized_parties     = var.clerk_authorized_parties != "" ? var.clerk_authorized_parties : "http://${aws_lb.app.dns_name}"
+  clerk_jwt_key_secret_enabled = var.clerk_jwt_key_secret_value_from != ""
 }
 
 data "aws_caller_identity" "current" {}
@@ -151,10 +156,13 @@ resource "aws_iam_role_policy" "task_execution_secrets" {
       Action = [
         "secretsmanager:GetSecretValue"
       ]
-      Resource = [
-        var.db_password_secret_arn,
-        var.geoapify_api_key_secret_arn
-      ]
+      Resource = concat(
+        [
+          var.db_password_secret_arn,
+          var.geoapify_api_key_secret_arn
+        ],
+        local.clerk_jwt_key_secret_enabled ? [var.clerk_jwt_key_secret_arn] : []
+      )
     }]
   })
 }
@@ -202,13 +210,21 @@ resource "aws_ecs_task_definition" "app" {
         { name = "PGSSLMODE", value = "verify-full" },
         { name = "PGSSLROOTCERT", value = "/app/certs/global-bundle.pem" },
         { name = "Clerk_Public_Key", value = var.clerk_public_key },
+        { name = "CLERK_AUTH_STRICT", value = var.clerk_auth_strict },
+        { name = "CLERK_ISSUER", value = local.clerk_issuer_effective },
+        { name = "CLERK_AUTHORIZED_PARTIES", value = local.clerk_authorized_parties },
         { name = "ADMIN_EMAILS", value = var.admin_emails },
         { name = "PROVIDER_EMAILS", value = var.provider_emails }
       ]
-      secrets = [
-        { name = "PGPASSWORD", valueFrom = var.db_password_secret_value_from },
-        { name = "GEOAPIFY_API_KEY", valueFrom = var.geoapify_api_key_secret_value_from }
-      ]
+      secrets = concat(
+        [
+          { name = "PGPASSWORD", valueFrom = var.db_password_secret_value_from },
+          { name = "GEOAPIFY_API_KEY", valueFrom = var.geoapify_api_key_secret_value_from }
+        ],
+        local.clerk_jwt_key_secret_enabled ? [
+          { name = "CLERK_JWT_KEY", valueFrom = var.clerk_jwt_key_secret_value_from }
+        ] : []
+      )
       logConfiguration = {
         logDriver = "awslogs"
         options = {

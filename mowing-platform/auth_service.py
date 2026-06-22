@@ -6,6 +6,7 @@ In production, set SMTP_HOST / SMTP_PORT / SMTP_USER / SMTP_PASS to send real em
 
 from __future__ import annotations
 
+import base64
 import os
 import random
 import smtplib
@@ -38,6 +39,38 @@ def _split_env_list(value: str) -> list[str]:
     return [item.strip() for item in value.split(",") if item.strip()]
 
 
+def derive_clerk_issuer_from_publishable_key(publishable_key: str) -> str:
+    """Return Clerk issuer URL encoded in a publishable key, if available."""
+    value = publishable_key.strip()
+    if value.startswith("pk_test_"):
+        encoded = value.removeprefix("pk_test_")
+    elif value.startswith("pk_live_"):
+        encoded = value.removeprefix("pk_live_")
+    else:
+        return ""
+
+    padding = "=" * (-len(encoded) % 4)
+    try:
+        host = base64.urlsafe_b64decode(f"{encoded}{padding}").decode("utf-8").strip().rstrip("$")
+    except Exception:
+        return ""
+    if not host:
+        return ""
+    return host if host.startswith(("http://", "https://")) else f"https://{host}"
+
+
+def clerk_issuer_from_env() -> str:
+    explicit = os.getenv("CLERK_ISSUER", "").strip()
+    if explicit:
+        return explicit
+
+    for env_name in ("Clerk_Public_Key", "CLERK_PUBLISHABLE_KEY", "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY"):
+        issuer = derive_clerk_issuer_from_publishable_key(os.getenv(env_name, ""))
+        if issuer:
+            return issuer
+    return ""
+
+
 def verify_clerk_session_token(authorization: str = "") -> dict[str, Any] | None:
     """Verify Clerk session JWT when configured.
 
@@ -62,7 +95,7 @@ def verify_clerk_session_token(authorization: str = "") -> dict[str, Any] | None
         raise PermissionError("PyJWT is required for Clerk token verification") from exc
 
     decode_options: dict[str, Any] = {"algorithms": ["RS256"], "options": {"verify_aud": False}}
-    issuer = os.getenv("CLERK_ISSUER", "").strip()
+    issuer = clerk_issuer_from_env()
     if issuer:
         decode_options["issuer"] = issuer
     audience = _split_env_list(os.getenv("CLERK_AUDIENCE", ""))

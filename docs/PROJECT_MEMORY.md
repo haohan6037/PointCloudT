@@ -345,6 +345,7 @@ Expected local `/api/health` when PostgreSQL is connected:
 - Validation: `python3 -m pytest mowing-platform/tests -q` passed 79 tests; Python compile checks and JS syntax checks passed.
 - Added service-provider evidence upload for business closure: provider workbench can upload现场照片, backend stores files under `mowing-platform/uploads/provider/<order-id>/`, appends photo URLs to the order, and records an activity timeline entry. Validation now passes 80 tests.
 - Added Clerk server-auth hardening for admin/provider APIs. Frontend requests can send Clerk session tokens in `Authorization`; backend can verify with `CLERK_JWT_KEY`, map token `sub` to local `app_users.clerk_user_id`, and enforce strict mode with `CLERK_AUTH_STRICT=1`. Added `docs/CLERK_SERVER_AUTH_HANDOFF_V1.md`. Validation now passes 83 tests.
+- Prepared AWS test runtime config for Clerk strict auth. Terraform now supports `CLERK_AUTH_STRICT`, `CLERK_AUTHORIZED_PARTIES`, derived-or-explicit `CLERK_ISSUER`, and optional Secrets Manager injection for `CLERK_JWT_KEY`. Backend auth also derives `CLERK_ISSUER` from `Clerk_Public_Key` / `CLERK_PUBLISHABLE_KEY` when no explicit issuer is configured. Do not commit the JWT public key value; store/reference it through AWS runtime config.
 
 ### 2026-06-19
 
