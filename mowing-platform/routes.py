@@ -14,6 +14,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 from address_service import AddressService, haversine_m
+from auth_service import strict_clerk_auth_enabled, verify_clerk_session_token
 from data import ROOT
 from models import (
     AddressAutocompletePayload,
@@ -350,26 +351,50 @@ def suggest_workers_for_address(payload: AddressAutocompletePayload) -> dict[str
 
 # ── Provider workbench / 服务商工作台 ─────────────────────────────────
 
-def _require_provider_actor(email: str = "") -> tuple[dict[str, Any], dict[str, Any] | None]:
-    """Require an active server/admin user and resolve worker profile."""
+def _user_from_authorization(authorization: str = "") -> dict[str, Any] | None:
+    """Resolve app user from verified Clerk token / 从已验证 Clerk token 解析本地用户."""
+    try:
+        claims = verify_clerk_session_token(authorization)
+    except PermissionError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+    if not claims:
+        return None
+    user = service.store.get_user_by_clerk_id(str(claims.get("sub") or ""))
+    if user is None:
+        raise HTTPException(status_code=403, detail="Clerk user is not linked to an app user")
+    return user
+
+
+def _fallback_user_by_email(email: str, permission_detail: str) -> dict[str, Any]:
+    """Resolve local user by email only when strict Clerk auth is disabled."""
     normalized = email.strip().lower()
-    if not normalized:
-        raise HTTPException(status_code=403, detail="Provider permission required")
+    if strict_clerk_auth_enabled() or not normalized:
+        raise HTTPException(status_code=403, detail=permission_detail)
     user = service.store.get_user(normalized)
     if user is None:
         user = service.store.sync_user_session(normalized)
+    return user
+
+
+def _require_provider_actor(email: str = "", authorization: str = "") -> tuple[dict[str, Any], dict[str, Any] | None]:
+    """Require an active server/admin user and resolve worker profile."""
+    user = _user_from_authorization(authorization) or _fallback_user_by_email(email, "Provider permission required")
     role = user.get("role")
     if user.get("status") != "active" or role not in {"server", "admin"}:
         raise HTTPException(status_code=403, detail="Provider permission required")
-    worker = service.store.get_worker_by_email(normalized)
+    worker = service.store.get_worker_by_email(user["email"])
     if role == "server" and worker is None:
         raise HTTPException(status_code=403, detail="No worker profile linked to this email")
     return user, worker
 
 
-def _require_provider_order(order_id: str, email: str) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any] | None]:
+def _require_provider_order(
+    order_id: str,
+    email: str,
+    authorization: str = "",
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any] | None]:
     """Require provider access to one assigned order."""
-    user, worker = _require_provider_actor(email)
+    user, worker = _require_provider_actor(email, authorization)
     data = service.store.bootstrap()
     order = next((item for item in data["orders"] if item["id"] == order_id), None)
     if order is None:
@@ -406,9 +431,9 @@ async def _save_provider_photos(order_id: str, photos: list[UploadFile]) -> list
 
 
 @app.get("/api/provider/workbench")
-def provider_workbench(email: str = "") -> dict[str, Any]:
+def provider_workbench(email: str = "", authorization: str = Header(default="", alias="Authorization")) -> dict[str, Any]:
     """Provider-visible orders / 服务商可见订单."""
-    user, worker = _require_provider_actor(email)
+    user, worker = _require_provider_actor(email, authorization)
     if user.get("role") == "admin" and worker is None:
         data = service.store.bootstrap()
         orders = [
@@ -425,50 +450,70 @@ def provider_workbench(email: str = "") -> dict[str, Any]:
 
 
 @app.post("/api/provider/orders/{order_id}/accept")
-def provider_accept_order(order_id: str, payload: ProviderActionPayload) -> dict[str, Any]:
+def provider_accept_order(
+    order_id: str,
+    payload: ProviderActionPayload,
+    authorization: str = Header(default="", alias="Authorization"),
+) -> dict[str, Any]:
     """Provider accepts assigned order / 服务商接单."""
-    _require_provider_order(order_id, payload.email)
+    user, _, _ = _require_provider_order(order_id, payload.email, authorization)
     service.store.accept_order(order_id)
     note = payload.note.strip() or "服务商已确认接单，准备安排上门。"
     order = service.store.add_service_log(order_id, ServiceLogPayload(stage="pre_visit", note=note))
-    return {"order": order, **provider_workbench(payload.email)}
+    return {"order": order, **provider_workbench(user["email"], authorization)}
 
 
 @app.post("/api/provider/orders/{order_id}/reject")
-def provider_reject_order(order_id: str, payload: ProviderActionPayload) -> dict[str, Any]:
+def provider_reject_order(
+    order_id: str,
+    payload: ProviderActionPayload,
+    authorization: str = Header(default="", alias="Authorization"),
+) -> dict[str, Any]:
     """Provider rejects assigned order / 服务商拒单."""
-    _require_provider_order(order_id, payload.email)
+    user, _, _ = _require_provider_order(order_id, payload.email, authorization)
     order = service.store.reject_order(order_id)
-    return {"order": order, **provider_workbench(payload.email)}
+    return {"order": order, **provider_workbench(user["email"], authorization)}
 
 
 @app.post("/api/provider/orders/{order_id}/arrival")
-def provider_mark_arrival(order_id: str, payload: ProviderActionPayload) -> dict[str, Any]:
+def provider_mark_arrival(
+    order_id: str,
+    payload: ProviderActionPayload,
+    authorization: str = Header(default="", alias="Authorization"),
+) -> dict[str, Any]:
     """Provider marks arrival/start / 服务商到场开工."""
-    _require_provider_order(order_id, payload.email)
+    user, _, _ = _require_provider_order(order_id, payload.email, authorization)
     service.store.update_order_status(order_id, "in_service")
     note = payload.note.strip() or "服务商已到场并开始作业。"
     order = service.store.add_service_log(order_id, ServiceLogPayload(stage="arrival", note=note))
-    return {"order": order, **provider_workbench(payload.email)}
+    return {"order": order, **provider_workbench(user["email"], authorization)}
 
 
 @app.post("/api/provider/orders/{order_id}/service-log")
-def provider_add_service_log(order_id: str, payload: ProviderActionPayload) -> dict[str, Any]:
+def provider_add_service_log(
+    order_id: str,
+    payload: ProviderActionPayload,
+    authorization: str = Header(default="", alias="Authorization"),
+) -> dict[str, Any]:
     """Provider adds a service log / 服务商添加服务记录."""
-    _require_provider_order(order_id, payload.email)
+    user, _, _ = _require_provider_order(order_id, payload.email, authorization)
     stage = payload.stage.strip() or "service_note"
     order = service.store.add_service_log(order_id, ServiceLogPayload(stage=stage, note=payload.note))
-    return {"order": order, **provider_workbench(payload.email)}
+    return {"order": order, **provider_workbench(user["email"], authorization)}
 
 
 @app.post("/api/provider/orders/{order_id}/complete")
-def provider_submit_completion(order_id: str, payload: ProviderActionPayload) -> dict[str, Any]:
+def provider_submit_completion(
+    order_id: str,
+    payload: ProviderActionPayload,
+    authorization: str = Header(default="", alias="Authorization"),
+) -> dict[str, Any]:
     """Provider submits completion for quality review / 服务商提交完工审核."""
-    _require_provider_order(order_id, payload.email)
+    user, _, _ = _require_provider_order(order_id, payload.email, authorization)
     service.store.update_order_status(order_id, "pending_quality_review")
     note = payload.note.strip() or "服务商已提交完工，等待平台质量审核。"
     order = service.store.add_service_log(order_id, ServiceLogPayload(stage="completion_followup", note=note))
-    return {"order": order, **provider_workbench(payload.email)}
+    return {"order": order, **provider_workbench(user["email"], authorization)}
 
 
 @app.post("/api/provider/orders/{order_id}/evidence")
@@ -477,25 +522,30 @@ async def provider_upload_evidence(
     email: str = Form(...),
     note: str = Form(""),
     photos: list[UploadFile] = File(default_factory=list),
+    authorization: str = Header(default="", alias="Authorization"),
 ) -> dict[str, Any]:
     """Provider uploads service evidence photos / 服务商上传现场证据照片."""
-    _require_provider_order(order_id, email)
+    user, _, _ = _require_provider_order(order_id, email, authorization)
     photo_urls = await _save_provider_photos(order_id, photos)
     if not photo_urls:
         raise HTTPException(status_code=400, detail="At least one photo is required")
     order = service.store.append_order_photos(order_id, photo_urls, note)
-    return {"order": order, "photos": photo_urls, **provider_workbench(email)}
+    return {"order": order, "photos": photo_urls, **provider_workbench(user["email"], authorization)}
 
 
 @app.post("/api/provider/orders/{order_id}/exception")
-def provider_report_exception(order_id: str, payload: ProviderActionPayload) -> dict[str, Any]:
+def provider_report_exception(
+    order_id: str,
+    payload: ProviderActionPayload,
+    authorization: str = Header(default="", alias="Authorization"),
+) -> dict[str, Any]:
     """Provider reports an exception / 服务商上报异常."""
-    _require_provider_order(order_id, payload.email)
+    user, _, _ = _require_provider_order(order_id, payload.email, authorization)
     order = service.store.handle_exception(
         order_id,
         ExceptionPayload(action="open", issueType=payload.issueType, note=payload.note),
     )
-    return {"order": order, **provider_workbench(payload.email)}
+    return {"order": order, **provider_workbench(user["email"], authorization)}
 
 
 # ── Address services / 地址服务 ────────────────────────────────────────
@@ -621,20 +671,23 @@ def get_current_user(email: str = "") -> dict[str, Any]:
     return {"user": user}
 
 
-def require_admin_actor(actor_email: str = "") -> dict[str, Any]:
+def require_admin_actor(actor_email: str = "", authorization: str = "") -> dict[str, Any]:
     """Require an active admin actor for management APIs / 管理接口要求启用管理员身份."""
-    if not actor_email:
-        raise HTTPException(status_code=403, detail="Admin permission required")
-    user = service.store.get_user(actor_email.strip().lower())
+    user = _user_from_authorization(authorization)
+    if user is None:
+        user = _fallback_user_by_email(actor_email, "Admin permission required")
     if not user or user.get("role") != "admin" or user.get("status") != "active":
         raise HTTPException(status_code=403, detail="Admin permission required")
     return user
 
 
 @app.get("/api/users")
-def list_users(actor_email: str = Header(default="", alias="X-GardenOS-Actor-Email")) -> dict[str, Any]:
+def list_users(
+    actor_email: str = Header(default="", alias="X-GardenOS-Actor-Email"),
+    authorization: str = Header(default="", alias="Authorization"),
+) -> dict[str, Any]:
     """List app users / 列出平台用户."""
-    require_admin_actor(actor_email=actor_email)
+    require_admin_actor(actor_email=actor_email, authorization=authorization)
     return {"users": service.store.list_users()}
 
 
@@ -642,17 +695,21 @@ def list_users(actor_email: str = Header(default="", alias="X-GardenOS-Actor-Ema
 def update_user_role(
     payload: UserRoleUpdatePayload,
     actor_email: str = Header(default="", alias="X-GardenOS-Actor-Email"),
+    authorization: str = Header(default="", alias="Authorization"),
 ) -> dict[str, Any]:
     """Update app user role / 更新平台用户角色."""
-    require_admin_actor(actor_email=actor_email)
+    require_admin_actor(actor_email=actor_email, authorization=authorization)
     user = service.store.update_user_role(payload.email, payload.role, payload.status)
     return {"user": user}
 
 
 @app.get("/api/mqtt/status")
-def mqtt_status(actor_email: str = Header(default="", alias="X-GardenOS-Actor-Email")) -> dict[str, Any]:
+def mqtt_status(
+    actor_email: str = Header(default="", alias="X-GardenOS-Actor-Email"),
+    authorization: str = Header(default="", alias="Authorization"),
+) -> dict[str, Any]:
     """MQTT monitor status / MQTT 监听状态."""
-    require_admin_actor(actor_email=actor_email)
+    require_admin_actor(actor_email=actor_email, authorization=authorization)
     mqtt_monitor.start()
     return mqtt_monitor.status()
 
@@ -663,9 +720,10 @@ def mqtt_messages(
     topic: str = "",
     q: str = "",
     actor_email: str = Header(default="", alias="X-GardenOS-Actor-Email"),
+    authorization: str = Header(default="", alias="Authorization"),
 ) -> dict[str, Any]:
     """List stored MQTT messages / 查询已存储 MQTT 消息."""
-    require_admin_actor(actor_email=actor_email)
+    require_admin_actor(actor_email=actor_email, authorization=authorization)
     return {"messages": service.store.list_mqtt_messages(limit=limit, topic=topic, q=q)}
 
 
@@ -673,9 +731,10 @@ def mqtt_messages(
 def record_mqtt_message(
     payload: MqttMessagePayload,
     actor_email: str = Header(default="", alias="X-GardenOS-Actor-Email"),
+    authorization: str = Header(default="", alias="Authorization"),
 ) -> dict[str, Any]:
     """Record a manual/test MQTT message / 记录手工或测试 MQTT 消息."""
-    require_admin_actor(actor_email=actor_email)
+    require_admin_actor(actor_email=actor_email, authorization=authorization)
     message = service.store.record_mqtt_message(payload.topic, payload.payload, payload.source)
     return {"message": message}
 

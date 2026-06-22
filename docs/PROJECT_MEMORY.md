@@ -271,10 +271,11 @@ Completed or mostly functional:
 - Service-provider evidence upload: provider-assigned orders can receive现场照片 through `/api/provider/orders/{order_id}/evidence`, stored under `mowing-platform/uploads/provider/<order-id>/` and appended to order `photos`.
 - Manual business-closure payment metadata: completed orders can record payment status, payment method, payment received time, and payment note alongside settlement fields.
 - MQTT vendor integration standard `docs/MQTT_VENDOR_INTEGRATION_STANDARD_V1.md` defines the current monitor-only topic/data contract and manufacturer questions while keeping command publishing out of scope.
+- Admin/provider APIs support Clerk Bearer-token verification in strict mode. `CLERK_AUTH_STRICT=1` plus `CLERK_JWT_KEY` makes protected APIs resolve actor identity from verified token `sub` -> `app_users.clerk_user_id` instead of trusting client-supplied email.
 
 Known gaps:
 
-- Production-grade Clerk token verification is not implemented server-side.
+- Customer-facing profile/order APIs still need token-backed identity; admin/provider API token verification is implemented but strict production depends on Clerk runtime config.
 - Service-provider portal still needs richer earnings display and real provider onboarding. Evidence upload is functional, but production file size/type scanning and managed object storage remain later hardening work.
 - Payment/settlement automation is not implemented.
 - Robot maintenance workflows are not phase-1 complete.
@@ -343,6 +344,7 @@ Expected local `/api/health` when PostgreSQL is connected:
 - Added `docs/MQTT_VENDOR_INTEGRATION_STANDARD_V1.md` for manufacturer MQTT alignment. The platform remains monitor/store focused and still must not publish movement commands without a separate safety design.
 - Validation: `python3 -m pytest mowing-platform/tests -q` passed 79 tests; Python compile checks and JS syntax checks passed.
 - Added service-provider evidence upload for business closure: provider workbench can upload现场照片, backend stores files under `mowing-platform/uploads/provider/<order-id>/`, appends photo URLs to the order, and records an activity timeline entry. Validation now passes 80 tests.
+- Added Clerk server-auth hardening for admin/provider APIs. Frontend requests can send Clerk session tokens in `Authorization`; backend can verify with `CLERK_JWT_KEY`, map token `sub` to local `app_users.clerk_user_id`, and enforce strict mode with `CLERK_AUTH_STRICT=1`. Added `docs/CLERK_SERVER_AUTH_HANDOFF_V1.md`. Validation now passes 83 tests.
 
 ### 2026-06-19
 

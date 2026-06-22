@@ -2224,6 +2224,9 @@ async function request(url, options = {}) {
   if (currentAdminEmail) {
     headers["X-GardenOS-Actor-Email"] = currentAdminEmail;
   }
+  if (window.GardenOSAuth?.authHeaders) {
+    Object.assign(headers, await window.GardenOSAuth.authHeaders());
+  }
   const response = await fetch(url, {
     ...options,
     headers,

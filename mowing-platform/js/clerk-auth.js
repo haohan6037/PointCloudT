@@ -78,9 +78,12 @@
     if (!email) {
       throw new Error("当前 Clerk 账号没有可用邮箱");
     }
+    const token = await getSessionToken();
+    const headers = { "Content-Type": "application/json" };
+    if (token) headers.Authorization = `Bearer ${token}`;
     const resp = await fetch("/api/session/sync", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify({
         email,
         clerkUserId: user?.id || "",
@@ -92,6 +95,19 @@
       throw new Error(data.detail || "同步登录状态失败");
     }
     return { ...data.user, role: normalizeRole(data.user?.role) };
+  }
+
+  async function getSessionToken() {
+    try {
+      return await window.Clerk?.session?.getToken();
+    } catch (error) {
+      return "";
+    }
+  }
+
+  async function authHeaders(extra = {}) {
+    const token = await getSessionToken();
+    return token ? { ...extra, Authorization: `Bearer ${token}` } : { ...extra };
   }
 
   async function mountSignIn(targetId) {
@@ -259,6 +275,8 @@
   window.GardenOSAuth = {
     ensureLoaded,
     getPrimaryEmail,
+    getSessionToken,
+    authHeaders,
     normalizeRole,
     routeForRole,
     guardPage,

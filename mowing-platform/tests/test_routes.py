@@ -149,6 +149,29 @@ class TestUserRoles:
         assert resp.status_code == 200
         assert resp.json()["user"]["role"] == "server"
 
+    def test_admin_can_use_verified_clerk_token(self, client, monkeypatch):
+        client.post(
+            "/api/session/sync",
+            json={
+                "email": "haohan6037@gmail.com",
+                "clerkUserId": "user_admin_token",
+                "displayName": "Admin Token",
+            },
+        )
+        monkeypatch.setattr("routes.verify_clerk_session_token", lambda authorization: {"sub": "user_admin_token"})
+
+        resp = client.get("/api/users", headers={"Authorization": "Bearer fake-token"})
+
+        assert resp.status_code == 200
+        assert "users" in resp.json()
+
+    def test_strict_auth_rejects_missing_clerk_token(self, client, monkeypatch):
+        monkeypatch.setenv("CLERK_AUTH_STRICT", "1")
+
+        resp = client.get("/api/users")
+
+        assert resp.status_code == 401
+
 
 class TestMqttMonitor:
     """MQTT monitoring and persistence / MQTT 监听与存储."""
@@ -450,6 +473,22 @@ class TestProviderWorkbench:
             json={"email": "li.worker@example.com", "note": "尝试越权接单"},
         )
         assert resp.status_code == 403
+
+    def test_provider_can_use_verified_clerk_token(self, client, monkeypatch):
+        client.post(
+            "/api/session/sync",
+            json={
+                "email": "zhang.worker@example.com",
+                "clerkUserId": "user_worker_token",
+                "displayName": "张师傅",
+            },
+        )
+        monkeypatch.setattr("routes.verify_clerk_session_token", lambda authorization: {"sub": "user_worker_token"})
+
+        resp = client.get("/api/provider/workbench", headers={"Authorization": "Bearer fake-token"})
+
+        assert resp.status_code == 200
+        assert resp.json()["worker"]["id"] == "w-001"
 
 
 class TestAddressRoutes:

@@ -508,6 +508,12 @@ class InMemoryStore:
         """Get app user by email / 按邮箱获取平台用户."""
         return self.users.get(email)
 
+    def get_user_by_clerk_id(self, clerk_user_id: str) -> dict[str, Any] | None:
+        """Get app user by Clerk user id / 按 Clerk 用户 ID 获取平台用户."""
+        if not clerk_user_id:
+            return None
+        return next((user for user in self.users.values() if user.get("clerkUserId") == clerk_user_id), None)
+
     def list_users(self) -> list[dict[str, Any]]:
         """List all app users / 列出全部平台用户."""
         users = [{**item, "role": normalize_user_role(item.get("role", "customer"))} for item in self.users.values()]
@@ -1764,6 +1770,25 @@ class PostgresStore:
                     where email = %s
                     """,
                     (email,),
+                )
+                row = cur.fetchone()
+        if row is None:
+            return None
+        return self._row_to_app_user(row)
+
+    def get_user_by_clerk_id(self, clerk_user_id: str) -> dict[str, Any] | None:
+        """Get app user by Clerk user id / 按 Clerk 用户 ID 获取平台用户."""
+        if not clerk_user_id:
+            return None
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    select email, clerk_user_id, display_name, role, status, created_at, updated_at
+                    from app_users
+                    where clerk_user_id = %s
+                    """,
+                    (clerk_user_id,),
                 )
                 row = cur.fetchone()
         if row is None:

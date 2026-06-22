@@ -91,9 +91,13 @@
     }
 
     async function providerRequest(url, options = {}) {
+      const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
+      if (window.GardenOSAuth?.authHeaders) {
+        Object.assign(headers, await window.GardenOSAuth.authHeaders());
+      }
       const resp = await fetch(url, {
         ...options,
-        headers: { "Content-Type": "application/json", ...(options.headers || {}) },
+        headers,
       });
       const data = await resp.json();
       if (!resp.ok) throw new Error(data.detail || "操作失败");
@@ -171,8 +175,12 @@
         form.append("email", providerEmail);
         form.append("note", note);
         Array.from(input.files).forEach((file) => form.append("photos", file));
+        const headers = window.GardenOSAuth?.authHeaders
+          ? await window.GardenOSAuth.authHeaders()
+          : {};
         const resp = await fetch(`/api/provider/orders/${orderId}/evidence`, {
           method: "POST",
+          headers,
           body: form,
         });
         const data = await resp.json();

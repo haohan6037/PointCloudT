@@ -21,6 +21,67 @@ CODE_LENGTH = 6  # verification code length / 验证码长度
 CODE_TTL = 600    # 10 minutes / 10分钟有效期
 
 
+def strict_clerk_auth_enabled() -> bool:
+    """Whether protected APIs must require verified Clerk JWTs."""
+    return os.getenv("CLERK_AUTH_STRICT", "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def extract_bearer_token(authorization: str = "") -> str:
+    """Extract Bearer token from Authorization header."""
+    value = authorization.strip()
+    if not value.lower().startswith("bearer "):
+        return ""
+    return value.split(" ", 1)[1].strip()
+
+
+def _split_env_list(value: str) -> list[str]:
+    return [item.strip() for item in value.split(",") if item.strip()]
+
+
+def verify_clerk_session_token(authorization: str = "") -> dict[str, Any] | None:
+    """Verify Clerk session JWT when configured.
+
+    Non-strict dev mode returns None when no token/key is present so legacy
+    email/header flows keep working locally. Strict mode raises PermissionError.
+    """
+    token = extract_bearer_token(authorization)
+    if not token:
+        if strict_clerk_auth_enabled():
+            raise PermissionError("Missing Clerk session token")
+        return None
+
+    jwt_key = os.getenv("CLERK_JWT_KEY", "").strip().replace("\\n", "\n")
+    if not jwt_key:
+        if strict_clerk_auth_enabled():
+            raise PermissionError("CLERK_JWT_KEY is required when CLERK_AUTH_STRICT=1")
+        return None
+
+    try:
+        import jwt
+    except Exception as exc:  # pragma: no cover - depends on optional runtime dep
+        raise PermissionError("PyJWT is required for Clerk token verification") from exc
+
+    decode_options: dict[str, Any] = {"algorithms": ["RS256"], "options": {"verify_aud": False}}
+    issuer = os.getenv("CLERK_ISSUER", "").strip()
+    if issuer:
+        decode_options["issuer"] = issuer
+    audience = _split_env_list(os.getenv("CLERK_AUDIENCE", ""))
+    if audience:
+        decode_options["audience"] = audience[0] if len(audience) == 1 else audience
+        decode_options["options"] = {"verify_aud": True}
+
+    try:
+        claims = jwt.decode(token, jwt_key, **decode_options)
+    except Exception as exc:
+        raise PermissionError("Clerk session token is not valid") from exc
+
+    allowed_parties = _split_env_list(os.getenv("CLERK_AUTHORIZED_PARTIES", ""))
+    azp = claims.get("azp")
+    if allowed_parties and azp and azp not in allowed_parties:
+        raise PermissionError("Clerk session token authorized party is not allowed")
+    return claims
+
+
 def _generate_code() -> str:
     """Generate a random numeric code / 生成随机数字验证码."""
     return "".join(str(random.randint(0, 9)) for _ in range(CODE_LENGTH))
