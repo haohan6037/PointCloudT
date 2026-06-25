@@ -103,6 +103,253 @@ def test_dissolve_nonexistent_family():
     res = client.delete("/families/999999", headers=headers)
     assert res.status_code == 404
 
+# ── Properties / maps / zones ─────────────────────────────────────────────────
+
+def test_property_map_zone_and_dock_flow():
+    _, headers = _auth_headers_for_user()
+    property_res = client.post(
+        "/properties",
+        json={
+            "name": "Backyard test site",
+            "address": "123 Garden Road",
+            "latitude": -36.8485,
+            "longitude": 174.7633,
+        },
+        headers=headers,
+    )
+    assert property_res.status_code == 200
+    garden_property = property_res.json()
+    assert garden_property["name"] == "Backyard test site"
+    assert garden_property["coordinate_system"] == "GOS-MAP-XY"
+
+    map_res = client.post(
+        f"/properties/{garden_property['id']}/maps",
+        json={
+            "map_type": "point_cloud_top_view",
+            "image_url": "/maps/backyard-top-view.png",
+            "coordinate_transform": {"scale": 0.05, "origin": {"x": 0, "y": 0}},
+        },
+        headers=headers,
+    )
+    assert map_res.status_code == 200
+    garden_map = map_res.json()
+    assert garden_map["property_id"] == garden_property["id"]
+    assert garden_map["coordinate_transform"]["scale"] == 0.05
+
+    zone_res = client.post(
+        f"/maps/{garden_map['id']}/zones",
+        json={
+            "name": "Rear lawn",
+            "zone_type": "WORK_AREA",
+            "polygon_coordinates": [
+                {"x": 0, "y": 0, "lat": -36.8485, "lng": 174.7633},
+                {"x": 12, "y": 0},
+                {"x": 12, "y": 8},
+                {"x": 0, "y": 8},
+            ],
+            "metadata": {"mow_allowed": True, "rtk_required": True},
+        },
+        headers=headers,
+    )
+    assert zone_res.status_code == 200
+    work_zone = zone_res.json()
+    assert work_zone["zone_type"] == "WORK_AREA"
+    assert len(work_zone["polygon_coordinates"]) == 4
+
+    no_go_res = client.post(
+        f"/maps/{garden_map['id']}/zones",
+        json={
+            "name": "Tree base",
+            "zone_type": "NO_GO",
+            "polygon_coordinates": [
+                {"x": 4, "y": 3},
+                {"x": 5, "y": 3},
+                {"x": 5, "y": 4},
+            ],
+        },
+        headers=headers,
+    )
+    assert no_go_res.status_code == 200
+
+    dock_res = client.post(
+        f"/maps/{garden_map['id']}/docks",
+        json={
+            "position": {"x": 1, "y": 1},
+            "heading": 90,
+            "related_zone_id": work_zone["id"],
+            "network_available": True,
+        },
+        headers=headers,
+    )
+    assert dock_res.status_code == 200
+    assert dock_res.json()["position"]["x"] == 1
+    assert dock_res.json()["related_zone_id"] == work_zone["id"]
+
+    path_res = client.post(
+        f"/maps/{garden_map['id']}/paths/generate",
+        json={
+            "work_zone_id": work_zone["id"],
+            "no_go_zone_ids": [no_go_res.json()["id"]],
+            "dock_id": dock_res.json()["id"],
+            "blade_width": 1.0,
+            "overlap_ratio": 0.0,
+            "path_angle": 0,
+        },
+        headers=headers,
+    )
+    assert path_res.status_code == 200
+    path = path_res.json()
+    assert path["map_id"] == garden_map["id"]
+    assert path["work_zone_id"] == work_zone["id"]
+    assert path["no_go_zone_ids"] == [no_go_res.json()["id"]]
+    assert path["dock_id"] == dock_res.json()["id"]
+    assert path["version"] == 1
+    assert path["estimated_distance"] > 0
+    assert len(path["path_points"]) > 2
+    assert path["path_points"][0] == {"x": 1.0, "y": 1.0, "lat": None, "lng": None}
+    assert path["path_points"][-1] == {"x": 1.0, "y": 1.0, "lat": None, "lng": None}
+
+    task_res = client.post(
+        f"/maps/{garden_map['id']}/tasks",
+        json={"path_id": path["id"], "work_zone_id": work_zone["id"]},
+        headers=headers,
+    )
+    assert task_res.status_code == 200
+    task = task_res.json()
+    assert task["status"] == "WAITING_CUSTOMER_CONFIRMATION"
+    assert task["customer_confirmation_status"] == "pending"
+
+    early_dispatch = client.post(f"/tasks/{task['id']}/dispatch", headers=headers)
+    assert early_dispatch.status_code == 409
+
+    confirm_res = client.post(
+        f"/tasks/{task['id']}/customer-confirm",
+        json={
+            "yard_cleared": True,
+            "allowed_start_time": "09:00",
+            "allowed_end_time": "12:30",
+        },
+        headers=headers,
+    )
+    assert confirm_res.status_code == 200
+    confirmed_task = confirm_res.json()
+    assert confirmed_task["status"] == "SCHEDULED"
+    assert confirmed_task["customer_confirmation_status"] == "confirmed"
+
+    dispatch_res = client.post(f"/tasks/{task['id']}/dispatch", headers=headers)
+    assert dispatch_res.status_code == 200
+    assert dispatch_res.json()["status"] == "DISPATCHED"
+
+    heartbeat_res = client.post(
+        "/robots/SIM-MOWER-001/heartbeat",
+        json={
+            "task_id": task["id"],
+            "position": {"x": 3, "y": 1},
+            "battery_level": 86,
+            "task_status": "RUNNING",
+            "current_path_index": 3,
+            "rtk_status": {
+                "fix_type": "RTK_FIXED",
+                "accuracy": 0.02,
+                "is_reliable": True,
+                "allowed_to_work": True,
+            },
+            "network_status": "online",
+        },
+        headers=headers,
+    )
+    assert heartbeat_res.status_code == 200
+    assert heartbeat_res.json()["robot_identifier"] == "SIM-MOWER-001"
+    assert heartbeat_res.json()["task_id"] == task["id"]
+
+    rtk_lost_res = client.post(
+        "/robots/SIM-MOWER-001/heartbeat",
+        json={
+            "task_id": task["id"],
+            "position": {"x": 4, "y": 1},
+            "battery_level": 84,
+            "task_status": "RUNNING",
+            "current_path_index": 4,
+            "rtk_status": {
+                "fix_type": "NONE",
+                "accuracy": 99,
+                "is_reliable": False,
+                "allowed_to_work": False,
+            },
+            "network_status": "online",
+        },
+        headers=headers,
+    )
+    assert rtk_lost_res.status_code == 200
+
+    task_after_heartbeat = client.get(f"/maps/{garden_map['id']}/tasks", headers=headers).json()[0]
+    assert task_after_heartbeat["status"] == "PAUSED"
+    assert task_after_heartbeat["current_path_index"] == 4
+    assert task_after_heartbeat["progress_percent"] > 0
+
+    telemetry_res = client.get("/robots/SIM-MOWER-001/telemetry", headers=headers)
+    assert telemetry_res.status_code == 200
+    assert len(telemetry_res.json()) == 2
+
+    events_res = client.get(f"/tasks/{task['id']}/events", headers=headers)
+    assert events_res.status_code == 200
+    assert [event["event_type"] for event in events_res.json()] == [
+        "TASK_CREATED",
+        "CUSTOMER_CONFIRMED",
+        "TASK_DISPATCHED",
+        "ROBOT_RUNNING",
+        "RTK_UNRELIABLE",
+    ]
+
+    assert len(client.get("/properties", headers=headers).json()) >= 1
+    assert len(client.get(f"/properties/{garden_property['id']}/maps", headers=headers).json()) == 1
+    assert len(client.get(f"/maps/{garden_map['id']}/zones", headers=headers).json()) == 2
+    assert len(client.get(f"/maps/{garden_map['id']}/docks", headers=headers).json()) == 1
+    assert len(client.get(f"/maps/{garden_map['id']}/paths", headers=headers).json()) == 1
+    assert len(client.get(f"/maps/{garden_map['id']}/tasks", headers=headers).json()) == 1
+
+def test_zone_requires_three_polygon_points():
+    _, headers = _auth_headers_for_user()
+    property_res = client.post("/properties", json={"name": "Invalid zone site"}, headers=headers)
+    garden_property = property_res.json()
+    map_res = client.post(f"/properties/{garden_property['id']}/maps", json={}, headers=headers)
+    garden_map = map_res.json()
+
+    res = client.post(
+        f"/maps/{garden_map['id']}/zones",
+        json={
+            "name": "Bad zone",
+            "zone_type": "WORK_AREA",
+            "polygon_coordinates": [{"x": 0, "y": 0}, {"x": 1, "y": 1}],
+        },
+        headers=headers,
+    )
+    assert res.status_code == 400
+
+def test_path_generation_validates_work_zone_type():
+    _, headers = _auth_headers_for_user()
+    property_res = client.post("/properties", json={"name": "Path validation site"}, headers=headers)
+    garden_property = property_res.json()
+    map_res = client.post(f"/properties/{garden_property['id']}/maps", json={}, headers=headers)
+    garden_map = map_res.json()
+    no_go_res = client.post(
+        f"/maps/{garden_map['id']}/zones",
+        json={
+            "name": "Cannot mow here",
+            "zone_type": "NO_GO",
+            "polygon_coordinates": [{"x": 0, "y": 0}, {"x": 1, "y": 0}, {"x": 1, "y": 1}],
+        },
+        headers=headers,
+    )
+    assert no_go_res.status_code == 200
+
+    res = client.post(
+        f"/maps/{garden_map['id']}/paths/generate",
+        json={"work_zone_id": no_go_res.json()["id"]},
+        headers=headers,
+    )
+    assert res.status_code == 400
+
 # ── Devices ───────────────────────────────────────────────────────────────────
 
 def test_search_devices():

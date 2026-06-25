@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>MyGardenOS Planning Demo</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">MyGardenOS</p>
+          <h1>Planning Demo</h1>
+        </div>
+        <label class="api-base">
+          <span>API</span>
+          <input id="apiBase" value="http://127.0.0.1:8012" />
+        </label>
+      </header>
+
+      <section class="workspace">
+        <aside class="sidebar">
+          <div class="panel">
+            <div class="panel-title">Flow</div>
+            <div id="steps" class="steps"></div>
+          </div>
+
+          <div class="panel controls">
+            <button id="runSetup" class="primary">Run Setup</button>
+            <button id="simulateRun">Running Heartbeat</button>
+            <button id="simulateRtk">RTK Loss</button>
+            <button id="refreshState">Refresh</button>
+          </div>
+
+          <div class="panel">
+            <div class="panel-title">Latest Task</div>
+            <dl id="taskFacts" class="facts"></dl>
+          </div>
+        </aside>
+
+        <section class="map-stage">
+          <canvas id="mapCanvas" width="900" height="620" aria-label="Planning map preview"></canvas>
+          <div class="legend" aria-hidden="true">
+            <span><i class="work"></i>Work</span>
+            <span><i class="nogor"></i>No-go</span>
+            <span><i class="path"></i>Path</span>
+            <span><i class="dock"></i>Dock</span>
+            <span><i class="robot"></i>Robot</span>
+          </div>
+        </section>
+
+        <aside class="sidebar right">
+          <div class="panel">
+            <div class="panel-title">IDs</div>
+            <dl id="idFacts" class="facts compact"></dl>
+          </div>
+          <div class="panel log-panel">
+            <div class="panel-title">Event Log</div>
+            <ol id="eventLog" class="event-log"></ol>
+          </div>
+        </aside>
+      </section>
+    </main>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

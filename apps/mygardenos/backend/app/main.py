@@ -35,6 +35,7 @@ from app.models.entities import (
     Setting,
     User,
 )
+from app.routers.planning import router as planning_router
 from app.schemas.dto import (
     AboutOut,
     AuthMeOut,
@@ -65,6 +66,11 @@ from app.schemas.dto import (
     VerifyEmailCodeOut,
     VerifyPasswordIn,
 )
+from app.services.auth_context import (
+    device_for_user as _device_for_user,
+    get_user_from_bearer as _get_user_from_bearer,
+    validate_time_hhmm as _validate_time_hhmm,
+)
 
 app = FastAPI(title="MyGardenOS API", version="0.1.0")
 app.add_middleware(
@@ -74,6 +80,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.include_router(planning_router)
 
 HELP_TITLES = [
     "Operation instructions", "Installation instructions", "Mapping instructions",
@@ -210,24 +217,6 @@ def _auth_out(db: Session, user: User) -> AuthSessionOut:
     return AuthSessionOut(access_token=token, user=user)
 
 
-def _get_user_from_bearer(authorization: Optional[str], db: Session) -> User:
-    if not authorization or not authorization.lower().startswith("bearer "):
-        raise HTTPException(401, "Missing bearer token")
-    token = authorization.split(" ", 1)[1].strip()
-    token_hash = sha256(token.encode()).hexdigest()
-    session = (
-        db.query(AuthSession)
-        .filter(AuthSession.token_hash == token_hash, AuthSession.expires_at > _now())
-        .first()
-    )
-    if not session:
-        raise HTTPException(401, "Invalid or expired session")
-    user = db.get(User, session.user_id)
-    if not user:
-        raise HTTPException(401, "User not found")
-    return user
-
-
 def _get_or_create_user_by_email(email: str, db: Session) -> User:
     user = db.query(User).filter(User.email == email).first()
     if user:
@@ -264,12 +253,6 @@ def _require_family_member(db: Session, user: User, family_id: Optional[int]) ->
         raise HTTPException(403, "You are not a member of this family")
     return family
 
-def _device_for_user(db: Session, user: User, device_id: int) -> Device:
-    device = db.get(Device, device_id)
-    if not device or device.owner_id != user.id:
-        raise HTTPException(404, "Device not found")
-    return device
-
 def _can_reassign_device_owner(db: Session, device: Device, user: User) -> bool:
     if not device.owner_id or device.owner_id == user.id:
         return True
@@ -288,16 +271,6 @@ def _bluetooth_out(device: Device, index: int = 0) -> BluetoothDeviceOut:
         is_bound=device.owner_id is not None,
         status=device.status,
     )
-
-def _validate_time_hhmm(value: str, field_name: str) -> str:
-    parts = value.split(":")
-    if len(parts) != 2 or not all(part.isdigit() for part in parts):
-        raise HTTPException(400, f"{field_name} must use HH:MM format")
-    hour = int(parts[0])
-    minute = int(parts[1])
-    if hour < 0 or hour > 23 or minute < 0 or minute > 59:
-        raise HTTPException(400, f"{field_name} must be a valid time")
-    return f"{hour:02d}:{minute:02d}"
 
 def _ensure_device_schedule_columns():
     existing = {column["name"] for column in inspect(engine).get_columns("devices")}

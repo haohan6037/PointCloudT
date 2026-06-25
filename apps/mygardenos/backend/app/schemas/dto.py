@@ -99,6 +99,7 @@ class DeviceScheduleUpdate(BaseModel):
     schedule_start_time: str
     schedule_end_time: str
 
+
 class NotificationOut(BaseModel):
     id: int
     kind: str

@@ -334,6 +334,19 @@ Expected local `/api/health` when PostgreSQL is connected:
 
 ## Latest Progress Log
 
+### 2026-06-25
+
+- Imported the next-stage MyGardenOS requirement/design direction from the user-provided v0.1 docs: prototype goal is the demo chain `property -> map -> zones -> path -> task -> simulated robot -> heartbeat/status -> exceptions -> ODM requirements`, not final commercial automation.
+- Added the first backend foundation for that chain under `apps/mygardenos/backend`: customer-owned `properties`, `property_maps`, `zones`, and `docks` data models plus authenticated prototype APIs for creating/listing properties, maps, zones, and charging docks.
+- Zone polygons and map coordinate transforms are stored as JSON text for the prototype so SQLite and PostgreSQL both remain runnable without an immediate PostGIS/Alembic migration. Default coordinate system remains `GOS-MAP-XY`.
+- This first step intentionally does not implement real robot command dispatch, path execution, retry/acknowledgement, or safety-control behavior. Those remain higher-risk follow-up work requiring a separate safety design and confirmation.
+- Added prototype path-planning support in `apps/mygardenos/backend`: `mowing_paths` stores generated path versions, and `/maps/{map_id}/paths/generate` creates a basic parallel-line coverage path using work-zone polygons, optional/no-go zones, blade width, overlap ratio, path angle, and optional dock start/end points. This is still a planning/demo artifact only, not a robot dispatch path.
+- Added prototype mowing task support in `apps/mygardenos/backend`: `mowing_tasks` and `task_events` now support creating a task from a path version, waiting for customer yard-clear/work-window confirmation, moving confirmed tasks to `SCHEDULED`, and moving scheduled tasks to `DISPATCHED` for demo flow. Dispatch only changes platform state and logs an event; it does not publish to MQTT or command a robot.
+- Added prototype robot heartbeat intake in `apps/mygardenos/backend`: `robot_telemetry` stores simulated robot status, `/robots/{robot_identifier}/heartbeat` records position/battery/task progress/RTK/network state, updates linked demo tasks, and pauses a task when RTK is unreliable. This is an HTTP simulator path for ODM/API alignment, not the production robot command channel.
+- Refactored the MyGardenOS prototype backend so the map/path/task/robot-demo chain is no longer implemented directly in `app/main.py`: route groups now live under `app/routers/property_maps.py`, `app/routers/mowing_workflow.py`, and `app/routers/robot_runtime.py`; shared logic lives under `app/services/auth_context.py`, `app/services/path_planner.py`, and `app/services/planning_runtime.py`; planning DTOs live in `app/schemas/planning.py`. Keep future next-stage work in those modules rather than expanding `main.py`.
+- Added a static next-stage operator demo under `apps/mygardenos/tools/planning-demo/`. It is split into `index.html`, `styles.css`, `api.js`, `map-view.js`, `demo-data.js`, and `app.js` so the browser demo does not become a single oversized file. The demo drives the backend prototype chain and visualizes work/no-go zones, dock, generated path, simulated robot heartbeat, and RTK pause state.
+- Local demo verification used backend `http://127.0.0.1:8012` and static page `http://127.0.0.1:4176` because `8000`, `8001`, and `4174` were already occupied by other local services.
+
 ### 2026-06-22
 
 - Prioritized business closure as the primary landing goal. MQTT remains standard/spec-first for vendor alignment, and point-cloud work remains functional development for later integration into the larger workflow.
@@ -351,6 +364,7 @@ Expected local `/api/health` when PostgreSQL is connected:
 - Added `docs/PILOT_GO_LIVE_RUNBOOK_V1.md` to capture the remaining AWS strict-auth deployment steps, AWS smoke-test gates, full business-closure acceptance path, and the pilot decision: owner-only AWS smoke can proceed after strict auth deploys, but external small-pilot usage should wait for HTTPS/domain and managed evidence storage such as S3.
 - Added `scripts/aws_strict_auth_smoke.sh` for post-deploy AWS smoke testing. It checks health/pages, strict unauthenticated rejection, and optional admin/provider/customer positive token paths without storing tokens in source.
 - Pushed `main` through GitHub Actions and deployed AWS test to image `gardenos-test-app:db2dfde6edae2fd58bf0a860512a5164ddbf027e`. Registered ECS task definition `gardenos-test:11` with strict Clerk auth enabled and `CLERK_JWT_KEY` from plaintext Secrets Manager secret `Clerk_JWT_Key`. AWS smoke passed for health/pages and unauthenticated rejection on admin, provider, customer, and MQTT admin APIs; positive token-path checks were skipped because no real Clerk session tokens were provided. MQTT broker publish/subscribe on `HeartBeat` still works against `3.103.181.148:53239`.
+- Added `docs/GARDENOS_AWS_MONOREPO_ARCHITECTURE_GUIDE.md` as the forward architecture guide: production should converge on AWS CloudFront + S3 frontend, ALB + ECS/Fargate API, RDS, S3 evidence storage, Secrets Manager, and EC2 Mosquitto for current robot compatibility; Vercel is preview/dev only. The target repository layout separates `apps/`, `services/`, `infra/`, `scripts/`, and `docs/` so future agents can automate staging, smoke, and production promotion from one source-of-truth folder.
 
 ### 2026-06-19
 
